@@ -762,7 +762,7 @@ class Talk:
         if not r:
             return {"ok": False, "why": "没有这个角色：%s" % role}
         full, bind = r[0], (r[1] or "")
-        tpl = self.get_setting("switch_cmd", "hermes --resume {v}")
+        tpl = self.get_setting("switch_cmd", "/resume {v}")
         mode = self.get_setting("switch_match", "title")
         if mode == "session":
             val = self.hermes_session_id_for(full) or full
