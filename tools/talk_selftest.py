@@ -137,12 +137,19 @@ def run():
         admin.init_owner()                      # 保证管理者角色在（幂等）
         boss = talk.Talk("owner.me")
         for s, nm, rl in [(1, "功能开发", "pipeline.author"), (2, "渲染打包", "pipeline.renderer"),
-                          (3, "测试", "pipeline.tester")]:
+                          (3, "测试", "pipeline.tester"), (4, "复测", "pipeline.auditor"),
+                          (5, "审计", "pipeline.auditor")]:
             boss.stage_add(WORD, s, nm, rl)
-        check("阶段初始全部 locked（后面的人收不到活）", boss.blocked_reason("pipeline.tester") is not None)
+        # 断言只挑"只在本自检项目里出现的角色"（审计者），否则别的项目的阶段会串进来 —— 见下一条判据
+        check("阶段初始全部 locked（后面的人收不到活）", boss.blocked_reason("pipeline.auditor") is not None)
         boss.gate_open(WORD, 1, "owner.me")
         check("放行第 1 步后：第 1 步的人能收活", boss.blocked_reason("pipeline.author") is None)
         check("放行第 1 步后：第 2 步的人仍被卡", boss.blocked_reason("pipeline.renderer") is not None)
+        # 女仆 2026-09-23 报的「一票否决」：同一个人担任两步（4 复测 / 5 审计）时，
+        # 第 5 步没放行**不能**把第 4 步的放行也挡掉（旧口径 blocked_reason 会让闸门自锁）
+        boss.gate_open(WORD, 4, "owner.me")
+        check("他名下某一步放行后就能收活（后面还有没放行的步骤也不算被卡）",
+              boss.blocked_reason("pipeline.auditor") is None)
         try:
             boss.deliver("pipeline.renderer", "不该送到的活")
             check("阶段没放行时投递被卡", False, "竟然送进去了")

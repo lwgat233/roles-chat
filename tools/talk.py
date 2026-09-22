@@ -601,12 +601,22 @@ class Talk:
         return "done"
 
     def blocked_reason(self, role):
-        """这个角色现在能不能收到活：它所在项目里，阶段状态是 locked 就不行"""
-        rows = self.stages()
-        for p, s, name, r, state in rows:
-            if r == role and state == "locked":
-                return "%s 第 %d 步（%s）还没放行" % (p, s, name)
-        return None
+        """这个角色现在能不能收到活。
+
+        规则（2026-09-23 修，女仆报的「一票否决」）：
+        **只有他名下所有阶段都还没放行（全 locked）才拦**；只要在某个项目里有 active 阶段，
+        就说明闸门给他开着，能收活。没有任何阶段的角色（女仆/经理/助手/署名身份）不受闸门管。
+        原来写成"任意一个 locked 就拦"：同一个人担任两步（如 测试 + 复测）时，
+        第 3 步 locked 会把第 1 步的放行通知也一起挡掉（投递台账里 682/684 就是这么失败的）→ 闸门自锁。
+        """
+        rows = [r for r in self.stages() if r[3] == role]
+        if not rows or any(r[4] == "active" for r in rows):
+            return None
+        locked = [r for r in rows if r[4] == "locked"]
+        if not locked:
+            return None                      # 只剩 done：项目收工了，不拦
+        p, s, name = locked[0][0], locked[0][1], locked[0][2]
+        return "他名下全部阶段都还没放行（%s 第 %d 步（%s）…）" % (p, s, name)
 
     def report(self, project, seq, from_role, body):
         """按固定格式交活：缺字段直接拒绝（格式 = 做了什么/证据/判据/依赖）"""
