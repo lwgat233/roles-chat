@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS setting(k TEXT PRIMARY KEY, v TEXT, updated_at INTEGE
 CREATE TABLE IF NOT EXISTS notify(msg_id INTEGER PRIMARY KEY, marked_at INTEGER, pushed_at INTEGER, channel TEXT);
 -- 唤醒：一条消息该动谁（私信/@点名=直接 approved；广播=候选 pending，等经理放行/跳过）
 -- 中转站的投递台账：哪条消息投给了谁、什么时候、成没成
+CREATE TABLE IF NOT EXISTS pref(k TEXT PRIMARY KEY, v TEXT);   -- 中转站小状态（游标等）
 CREATE TABLE IF NOT EXISTS delivery(
   msg_id INTEGER, role TEXT, at INTEGER, ok INTEGER, note TEXT, PRIMARY KEY(msg_id, role));
 CREATE TABLE IF NOT EXISTS wake(
@@ -133,7 +134,8 @@ class Talk:
         self.conn = sqlite3.connect(path)
         self.conn.executescript(SCHEMA)
         # 老库补列（CREATE TABLE IF NOT EXISTS 不会加列）：角色标签、消息的广播范围
-        for sql in ("ALTER TABLE notify ADD COLUMN answered_at INTEGER",
+        for sql in ("CREATE TABLE IF NOT EXISTS pref(k TEXT PRIMARY KEY, v TEXT)",
+                   "ALTER TABLE notify ADD COLUMN answered_at INTEGER",
                    "ALTER TABLE role ADD COLUMN tags TEXT",
                     "ALTER TABLE msg ADD COLUMN scope TEXT"):
             try:
@@ -662,7 +664,7 @@ class Talk:
             "SELECT DISTINCT role FROM member WHERE role NOT IN ('owner.me','me') ORDER BY role").fetchall()]
         if not rows:
             rows = [r[0] for r in self.conn.execute(
-                "SELECT full_name FROM role WHERE full_name NOT IN ('owner.me','me') ORDER BY role").fetchall()]
+                "SELECT full_name FROM role WHERE full_name NOT IN ('owner.me','me') ORDER BY full_name").fetchall()]
         if scope:
             want = [x.strip() for x in str(scope).split(",") if x.strip()]
             rows = [r for r in rows if r.split(".")[0] in want] or rows
