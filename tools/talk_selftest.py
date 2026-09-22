@@ -109,8 +109,10 @@ def run():
         have = lambda p: os.path.exists(p) and WORD in open(p, encoding="utf-8").read()
         check("私信写在 private-author__tester 文件里", have(priv), os.path.basename(priv))
         check("broadcast 文件里没有私信正文", os.path.exists(bcast) and "private 消息" not in open(bcast, encoding="utf-8").read())
-        check("renderer 能读的文件里没有私信文件", not any("-private-" in f for f in r.visible_files("pipeline.renderer")),
-              r.visible_files("pipeline.renderer")[:3])
+        _rvis = [f for f in r.visible_files("pipeline.renderer") if "-private-" in f]
+        check("renderer 看不到跟自己无关的私信文件",
+              not any("pipeline.renderer" not in f for f in _rvis),
+              _rvis[:3])
 
         # --- 项目阶段（经理闸门）---
         admin.init_owner()                      # 保证管理者角色在（幂等）
