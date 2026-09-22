@@ -504,7 +504,7 @@ class Talk:
         win = win_name(role)
         if win in tmux_windows():
             return "%s:%s" % (TMUX_SESSION, win)
-        old = tmux_session(role)
+        old = self.tmux_session(role)
         if subprocess.run(["tmux", "has-session", "-t", old], capture_output=True).returncode == 0:
             return old
         return "%s:%s" % (TMUX_SESSION, win)
