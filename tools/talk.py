@@ -875,8 +875,12 @@ class Talk:
             pass
         return None
 
-    def deliver(self, role, text, force=False):
-        """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）"""
+    def deliver(self, role, text, force=False, gate_force=False):
+        """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）
+
+        force=True 连「暂停」也跳过；gate_force=True 只跳过**阶段闸门**（转告/结论类用：
+        它们不是派活，锁着的人读到即可）。
+        """
         if role == "home.maid":
             # 女仆＝本人的 QQ 通道，不往 tmux 投（她也不需要会话）；返回"通道"当投递目标
             return self.setting_get("qq_target") or "qqbot"
@@ -884,7 +888,7 @@ class Talk:
         if p and not force:
             raise RuntimeError("已暂停（%s），不投递：%s —— 管理者用 start 恢复" % (p, role))
         b = self.blocked_reason(role)
-        if b and not force:
+        if b and not (force or gate_force):
             raise RuntimeError("阶段没放行，不投递：%s（%s）—— 经理用 gate-open 放行" % (role, b))
         sess = self.target(role)
         if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode != 0:
@@ -1042,12 +1046,17 @@ class Talk:
                 sent.append({"id": mid, "skipped": True})
                 continue
             label = self.relay_label(kind, frm, mid)
+            # 转告/结论类（【告知/【决定/【纠正/【已解决/【收工/【进度/【卡住】与「控制」状态告知）
+            # **不受阶段闸门拦**：它们不是派活，收件人读到即可（照静默纪律也不许据此动手）。
+            # 不这样分，就会出现「闸门锁住的人连"你的经验改了、重读"都收不到」（2026-09-23 踩过）。
+            notice = str(self.conn.execute("SELECT COALESCE(topic,'') FROM msg WHERE id=?", (mid,)).fetchone()[0]).startswith(
+                self.NUDGE_SKIP_TOPIC)
             for who in self.relay_targets(kind, to_role, scope):
                 text = "%s\n%s\n\n（回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\"；直接在这里说也行）" % (
                     label, body, mid, who)
                 ok = True
                 try:
-                    self.deliver(who, text)
+                    self.deliver(who, text, gate_force=notice)
                 except Exception as e:
                     ok = False
                     text = str(e)
