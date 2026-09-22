@@ -466,10 +466,18 @@ class Talk:
         if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode != 0:
             raise RuntimeError("角色 %s 没有会话（先 spawn）" % role)
         buf = "rc%d" % now_ts()
-        subprocess.run(["tmux", "load-buffer", "-b", buf, "-"], input=text.encode("utf-8"), check=True)
-        subprocess.run(["tmux", "paste-buffer", "-b", buf, "-t", sess], check=True)
-        subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=True)
-        subprocess.run(["tmux", "delete-buffer", "-b", buf], check=True)
+        if "\n" in text:
+            # 多行：粘贴后隔一下再回车（有的 TUI 会把紧跟粘贴的回车吞掉 → 用户报过"没发送换行符"）
+            subprocess.run(["tmux", "load-buffer", "-b", buf, "-"], input=text.encode("utf-8"), check=True)
+            subprocess.run(["tmux", "paste-buffer", "-b", buf, "-t", sess], check=True)
+            time.sleep(0.25)
+            subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=True)
+        else:
+            # 单行：直接打字再回车，最稳（不经过粘贴缓冲，TUI 一定能收）
+            subprocess.run(["tmux", "send-keys", "-t", sess, "-l", text], check=True)
+            time.sleep(0.12)
+            subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=True)
+        subprocess.run(["tmux", "delete-buffer", "-b", buf], check=False)   # 单行分支没建过缓冲区，删失败不算错
         return sess
 
     def capture(self, role, n=1000):
