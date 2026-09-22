@@ -84,6 +84,44 @@ def log_path(kind, from_role, to_role, day=None):
     return os.path.join(TALK_DIR, "%s-%s.md" % (day, kind))
 
 
+TMUX_SESSION = "roles"          # 只用一个 tmux 会话；每个角色是里面的一个窗口（省后台、切换不用敲命令）
+
+
+def win_name(role):
+    """角色 → 窗口名：home.maid → home-maid"""
+    return str(role or "").replace(".", "-")
+
+
+def ensure_tmux_session():
+    if subprocess.run(["tmux", "has-session", "-t", TMUX_SESSION], capture_output=True).returncode != 0:
+        subprocess.run(["tmux", "new-session", "-d", "-s", TMUX_SESSION], check=True)
+
+
+def tmux_windows():
+    r = subprocess.run(["tmux", "list-windows", "-t", TMUX_SESSION, "-F", "#{window_name}"],
+                       capture_output=True, text=True)
+    return [x.strip() for x in r.stdout.split("\n") if x.strip()] if r.returncode == 0 else []
+
+
+def migrate_old_sessions():
+    """把"一个角色一个 tmux 会话"的窗口搬进 roles（进程不重启、上下文不丢），旧会话随之消失"""
+    r = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], capture_output=True, text=True)
+    if r.returncode != 0:
+        return []
+    moved = []
+    for sess in [x.strip() for x in r.stdout.split("\n") if x.strip()]:
+        if not sess.startswith("role-"):
+            continue
+        ensure_tmux_session()
+        win = sess[len("role-"):]
+        if subprocess.run(["tmux", "move-window", "-s", sess + ":0", "-t", TMUX_SESSION + ":"],
+                          capture_output=True).returncode != 0:
+            continue
+        subprocess.run(["tmux", "rename-window", "-t", TMUX_SESSION + ":", win], capture_output=True)
+        moved.append("%s → %s:%s" % (sess, TMUX_SESSION, win))
+    return moved
+
+
 class Talk:
     def __init__(self, role=None, path=DB):
         self.role = role
@@ -274,7 +312,7 @@ class Talk:
 
     def stop_role(self, role, hard=False):
         """让她停：先发 /stop 打断当前回合；hard=True 连 tmux 会话一起收"""
-        sess = self.tmux_session(role)
+        sess = self.target(role)
         alive = subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode == 0
         if alive:
             if hard:
@@ -338,7 +376,7 @@ class Talk:
         scenes = {}
         for full, scene, name, title, tags in self.conn.execute(
                 "SELECT full_name,scene,name,title,COALESCE(tags,'') FROM role ORDER BY scene, full_name"):
-            alive = self._alive(self.tmux_session(full))
+            alive = self.role_online(full)
             scenes.setdefault(scene, []).append({
                 "full_name": full, "name": name, "title": title or "", "tags": (tags or ""),
                 "state": self.state_of("role:" + full),
@@ -377,7 +415,7 @@ class Talk:
 
     def spawn(self, role, profile=None, launch=None):
         """给角色开一个 tmux 会话（**幂等**：已经在跑就不动它）；会话名固定 = role-<场景>-<角色>"""
-        sess = self.tmux_session(role)
+        sess = self.target(role)
         if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode == 0:
             return sess, False
         # Hermes 侧也是"同一个会话续着走"：-c <角色全名> --create-if-missing
@@ -454,6 +492,20 @@ class Talk:
         mid = self.send(from_role, None, "default", "报告 %s" % feat, body, feature=feat)
         return mid
 
+    def target(self, role):
+        """这个角色该投到哪：优先 roles:<窗口名>（新），退而用旧的 role-xxx 会话"""
+        win = win_name(role)
+        if win in tmux_windows():
+            return "%s:%s" % (TMUX_SESSION, win)
+        old = tmux_session(role)
+        if subprocess.run(["tmux", "has-session", "-t", old], capture_output=True).returncode == 0:
+            return old
+        return "%s:%s" % (TMUX_SESSION, win)
+
+    def role_online(self, role):
+        """在线 = 他在 roles 里有窗口（或旧的独立会话还活着）"""
+        return (win_name(role) in tmux_windows()) or self._alive(tmux_session(role))
+
     def deliver(self, role, text, force=False):
         """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）"""
         p = self.is_paused(role)
@@ -462,7 +514,7 @@ class Talk:
         b = self.blocked_reason(role)
         if b and not force:
             raise RuntimeError("阶段没放行，不投递：%s（%s）—— 经理用 gate-open 放行" % (role, b))
-        sess = self.tmux_session(role)
+        sess = self.target(role)
         if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode != 0:
             raise RuntimeError("角色 %s 没有会话（先 spawn）" % role)
         buf = "rc%d" % now_ts()
@@ -482,7 +534,7 @@ class Talk:
 
     def capture(self, role, n=1000):
         """看这个角色会话最近的输出（缓冲默认 1000 行）"""
-        sess = self.tmux_session(role)
+        sess = self.target(role)
         p = subprocess.run(["tmux", "capture-pane", "-p", "-S", "-%d" % n, "-t", sess],
                            capture_output=True, text=True)
         return p.stdout
@@ -585,7 +637,7 @@ class Talk:
             raise PermissionError("owner.me 是经理本人，不能删")
         if not self.conn.execute("SELECT 1 FROM role WHERE full_name=?", (full,)).fetchone():
             raise ValueError("没有这个角色：%s" % full)
-        if self._alive(self.tmux_session(full)) and not force:
+        if self.role_online(full) and not force:
             raise PermissionError("他的会话还在跑（tmux %s）：先停了他，或加 --force" % self.tmux_session(full))
         perms = self.conn.execute("SELECT COUNT(*) FROM perm WHERE full_name=?", (full,)).fetchone()[0]
         mems = self.conn.execute("SELECT COUNT(*) FROM member WHERE role=?", (full,)).fetchone()[0]
