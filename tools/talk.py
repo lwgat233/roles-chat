@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS session(
 CREATE TABLE IF NOT EXISTS setting(k TEXT PRIMARY KEY, v TEXT, updated_at INTEGER);
 -- 该不该通知他（角色标注）+ 推没推过（女仆中转用）
 CREATE TABLE IF NOT EXISTS notify(msg_id INTEGER PRIMARY KEY, marked_at INTEGER, pushed_at INTEGER, channel TEXT);
+-- 唤醒：一条消息该动谁（私信/@点名=直接 approved；广播=候选 pending，等经理放行/跳过）
+CREATE TABLE IF NOT EXISTS wake(
+  msg_id INTEGER, role TEXT, state TEXT, by_role TEXT, why TEXT, at INTEGER, delivered_at INTEGER,
+  PRIMARY KEY(msg_id, role));
+-- 接入表（**由经理维护**）：哪个频道（=场景）里谁可以收到消息；不在表里就不打扰他
+CREATE TABLE IF NOT EXISTS member(
+  channel TEXT, role TEXT, added_by TEXT, at INTEGER, PRIMARY KEY(channel, role));
 """
 
 
@@ -84,6 +91,13 @@ class Talk:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         self.conn = sqlite3.connect(path)
         self.conn.executescript(SCHEMA)
+        # 老库补列（CREATE TABLE IF NOT EXISTS 不会加列）：角色标签、消息的广播范围
+        for sql in ("ALTER TABLE role ADD COLUMN tags TEXT",
+                    "ALTER TABLE msg ADD COLUMN scope TEXT"):
+            try:
+                self.conn.execute(sql)
+            except sqlite3.Error:
+                pass
         self.conn.commit()
         self.admin = (role is None) or self._has("msg:all", "read")   # 看全部内容（含私信）
         self.manage = self._can_manage()                              # 管理权（改名册/放行阶段/暂停）
@@ -123,6 +137,10 @@ class Talk:
         self.conn.execute("CREATE TEMP VIEW v_msg AS SELECT * FROM msg WHERE " + cond)
 
         admin = self.manage
+        # 写权限：**治理表**只有经理能改；其余表（发言/标注/台账这类）放行。
+        # 这么分是为了不再"每加一张新表就报 not authorized"（member/wake 都踩过），
+        # 而真正要紧的内容隔离在**读**那一侧（msg 只能走视图）。
+        GOVERN = ("role", "perm", "room", "stage", "member")
 
         def auth(action, arg1, arg2, dbname, source):
             if action == sqlite3.SQLITE_READ:
@@ -132,14 +150,9 @@ class Talk:
                     return sqlite3.SQLITE_DENY
                 return sqlite3.SQLITE_OK
             if action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE):
-                if arg1 in ("role", "perm") and not admin:
-                    return sqlite3.SQLITE_DENY        # 名册与权限：只有管理员能改
-                if arg1 in ("room", "stage"):
-                    # 房间状态 / 项目阶段：有 room:control/write 的管理者才能改（"我"那个角色 / 经理）
-                    return sqlite3.SQLITE_OK if (admin or self._has("room:control", "write")) else sqlite3.SQLITE_DENY
-                if arg1 in ("msg", "reply", "seen"):
-                    return sqlite3.SQLITE_OK          # 发言权：人人有
-                return sqlite3.SQLITE_DENY
+                if arg1 in GOVERN and not admin:
+                    return sqlite3.SQLITE_DENY        # 治理表：只有经理（= 有管理权的角色）
+                return sqlite3.SQLITE_OK              # 其余表放行（发言、标注、台账…）
             return sqlite3.SQLITE_OK
 
         self.conn.set_authorizer(auth)
@@ -149,18 +162,22 @@ class Talk:
         return "'" + str(s).replace("'", "''") + "'"
 
     # ---------- 写 ----------
-    def send(self, from_role, to_role, kind, topic, body, must_reply=False, feature=None):
+    def send(self, from_role, to_role, kind, topic, body, must_reply=False, feature=None, scope=None):
         if self.role and self.role != from_role:
             raise PermissionError("我是 %s，不能替 %s 发言" % (self.role, from_role))
         ts = now_ts()
         path = log_path(kind, from_role, to_role)
         os.makedirs(TALK_DIR, exist_ok=True)
         cur = self.conn.execute(
-            "INSERT INTO msg(kind,from_role,to_role,topic,body,created_at,must_reply,feature,file_path)"
-            " VALUES(?,?,?,?,?,?,?,?,?)",
-            (kind, from_role, to_role, topic, body, ts, 1 if must_reply else 0, feature, os.path.relpath(path, ROOT)))
+            "INSERT INTO msg(kind,from_role,to_role,topic,body,created_at,must_reply,feature,file_path,scope)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (kind, from_role, to_role, topic, body, ts, 1 if must_reply else 0, feature,
+             os.path.relpath(path, ROOT), scope))
         mid = cur.lastrowid
         self.conn.commit()
+        # 发完就把"谁该动"摊开：私信/@点名 → 直接唤醒；广播 → 候选，等经理放行（见 wake_seed）
+        # 注意：**不要静默吞异常** —— 吞了就会出现"消息发了但没有唤醒记录"这种查不出的怪事
+        self.wake_seed(mid)
         head = "[%s] %s → %s | 全体? %s | 话题:%s | 必读:%s | #%d\n" % (
             fmt(ts), from_role, (to_role or "全体"), "是" if kind == "broadcast" else "否",
             topic or "-", "是" if must_reply else "否", mid)
@@ -309,17 +326,28 @@ class Talk:
         return subprocess.run(["tmux", "has-session", "-t", tmux], capture_output=True).returncode == 0
 
     def roles_json(self):
-        """面板的角色列表：**按场景分组**，每个角色带 名称/描述(title)/状态/有没有会话/欠多少回复"""
+        """面板的角色列表：**按场景分组**，每个角色带 名称/描述(title)/状态/**谁在线**/**能接入哪些频道**/欠多少回复"""
+        ch = {}
+        for channel, role, *_ in self.member_list():
+            ch.setdefault(channel, []).append(role)
+        ch_by_role = {}
+        for channel, roles in ch.items():
+            for r in roles:
+                ch_by_role.setdefault(r, []).append(channel)
         scenes = {}
         for full, scene, name, title in self.conn.execute(
                 "SELECT full_name,scene,name,title FROM role ORDER BY scene, full_name"):
+            alive = self._alive(self.tmux_session(full))
             scenes.setdefault(scene, []).append({
                 "full_name": full, "name": name, "title": title or "",
                 "state": self.state_of("role:" + full),
-                "session": self._alive(self.tmux_session(full)),
+                "session": alive,
+                "online": alive and self.state_of("role:" + full) != "paused",
+                "channels": sorted(ch_by_role.get(full, [])),
                 "pending": len(self.inbox(full)) if self.role is None else 0,
             })
-        return {"scenes": [{"scene": s, "roles": v} for s, v in sorted(scenes.items())]}
+        return {"scenes": [{"scene": s, "roles": v} for s, v in sorted(scenes.items())],
+                "channels": {c: sorted(v) for c, v in sorted(ch.items())}}
 
     def sessions_json(self, limit=20):
         """历史记录：他最近用过的会话（角色会话 + 单独会话），点一下就能跳回去"""
@@ -588,6 +616,160 @@ class Talk:
                           (msg_id, role, now_ts()))
         self.conn.commit()
 
+    # ---------- 接入表：经理决定"这个频道里谁能收到消息" ----------
+
+    def member_add(self, channel, role, by_role):
+        if not self._can_control():
+            raise PermissionError("只有经理能改接入表：%s" % by_role)
+        self.conn.execute("INSERT OR REPLACE INTO member(channel,role,added_by,at) VALUES(?,?,?,?)",
+                          (channel, role, by_role, now_ts()))
+        self.conn.commit()
+        return "%s 接入 %s" % (role, channel)
+
+    def member_del(self, channel, role, by_role):
+        if not self._can_control():
+            raise PermissionError("只有经理能改接入表：%s" % by_role)
+        self.conn.execute("DELETE FROM member WHERE channel=? AND role=?", (channel, role))
+        self.conn.commit()
+        return "%s 移出 %s" % (role, channel)
+
+    def member_list(self, channel=None):
+        q = ("SELECT m.channel,m.role,m.added_by,m.at,r.title FROM member m"
+             " LEFT JOIN role r ON r.full_name=m.role")
+        args = ()
+        if channel:
+            q += " WHERE m.channel=?"
+            args = (channel,)
+        return self.conn.execute(q + " ORDER BY m.channel, m.role", args).fetchall()
+
+    def _members_of(self, channels):
+        """这个频道里能收到消息的人；接入表空着就退回"该场景全部角色"（免得新场景一上来没人理）"""
+        out = set()
+        rows = self.member_list()
+        by_ch = {}
+        for ch, role, *_ in rows:
+            by_ch.setdefault(ch, set()).add(role)
+        for ch in channels:
+            out |= by_ch.get(ch, set())
+        if not out:
+            for full, scene in self.conn.execute("SELECT full_name,scene FROM role").fetchall():
+                if scene in channels:
+                    out.add(full)
+        return out
+
+    # ---------- 注册（TUI）：场景 → 角色名 → 描述 → 标签 → 组 ----------
+
+    def reg_role(self, scene, name, title, tags=""):
+        """登记一个角色：**全名 = <场景>.<角色>**；tags 是它身上的标签（逗号分隔）；
+        场景就是"组"。面板/roles-json 会按场景分组显示。"""
+        scene = (scene or "").strip()
+        name = (name or "").strip()
+        require_ok = scene.replace("-", "").isalnum() and name.replace("-", "").isalnum()
+        if not (scene and name and require_ok):
+            raise ValueError("场景和角色名只能用字母数字与短横线：<场景>.<角色>")
+        full = "%s.%s" % (scene, name)
+        self.conn.execute("INSERT OR REPLACE INTO role(full_name,scene,name,title,tags,created_at)"
+                          " VALUES(?,?,?,?,?,?)", (full, scene, name, title or "", tags or "", now_ts()))
+        self.conn.commit()
+        return full
+
+    def reg_line(self, full):
+        r = self.conn.execute("SELECT full_name,scene,name,title,tags FROM role WHERE full_name=?",
+                              (full,)).fetchone()
+        return "%-24s 场景=%-12s 角色=%-12s 标签=%-20s 描述=%s" % (r[0], r[1], r[2], r[3] or "-", r[4] or "-")
+
+    # ---------- 唤醒：只有 @了他 / 私信他 / （经理放行的）广播，他才会动 ----------
+
+    def _mentions(self, body, topic):
+        text = (body or "") + " " + (topic or "")
+        return set(re.findall(r"@([a-z0-9-]+\.[a-z0-9-]+)", text))
+
+    def wake_seed(self, msg_id):
+        """发完消息就摊开"谁该动"：私信/@点名 → 直接 approved；广播 → 候选 pending（等经理放行）。"""
+        m = self.conn.execute("SELECT kind,to_role,topic,body,scope FROM v_msg WHERE id=?", (msg_id,)).fetchone()
+        if not m:
+            return 0
+        kind, to_role, topic, body, scope = m
+        n = 0
+        if kind == "private" and to_role:
+            self._wake_set(msg_id, to_role, "approved", "system", "私信")
+            n = 1
+        for who in self._mentions(body, topic):
+            self._wake_set(msg_id, who, "approved", "system", "@点名")
+            n += 1
+        if kind == "broadcast":
+            groups = [g.strip() for g in (scope or "").split(",") if g.strip()]
+            if groups:
+                cand = self._members_of(groups)      # 经理维护的接入表说了算
+                for full in sorted(cand):
+                    if full == "owner.me":
+                        continue
+                    cur = self.conn.execute("SELECT state FROM wake WHERE msg_id=? AND role=?",
+                                            (msg_id, full)).fetchone()
+                    if cur and cur[0] == "approved":
+                        continue          # @点名/私信已经让它动了，别再改回候选
+                    self._wake_set(msg_id, full, "pending", None, None)
+                    n += 1
+            else:
+                for full, scene in self.conn.execute("SELECT full_name,scene FROM role").fetchall():
+                    if full == "owner.me":
+                        continue
+                    self._wake_set(msg_id, full, "pending", None, None)
+                    n += 1
+
+    def _wake_set(self, msg_id, role, state, by_role, why):
+        self.conn.execute("INSERT OR REPLACE INTO wake(msg_id,role,state,by_role,why,at,delivered_at)"
+                          " VALUES(?,?,?,?,?,?,COALESCE((SELECT delivered_at FROM wake"
+                          " WHERE msg_id=? AND role=?),NULL))",
+                          (msg_id, role, state, by_role, why, now_ts(), msg_id, role))
+        self.conn.commit()
+
+    def wake_list(self, msg_id=None):
+        q = ("SELECT w.msg_id,w.role,w.state,w.by_role,w.why,m.topic,m.kind FROM wake w"
+             " LEFT JOIN v_msg m ON m.id=w.msg_id")
+        args = ()
+        if msg_id:
+            q += " WHERE w.msg_id=?"
+            args = (msg_id,)
+        return self.conn.execute(q + " ORDER BY w.msg_id DESC, w.role", args).fetchall()
+
+    def wake_ok(self, msg_id, role, by_role):
+        """经理放行：让他动（后面 wake-run 会真的投递给他）"""
+        if not self._can_control():
+            raise PermissionError("只有经理能决定谁动：%s" % by_role)
+        self._wake_set(msg_id, role, "approved", by_role, "放行")
+        return "approved"
+
+    def wake_skip(self, msg_id, role, by_role, why=""):
+        """经理跳过：这件事不适合他，不打扰他"""
+        if not self._can_control():
+            raise PermissionError("只有经理能决定谁不动：%s" % by_role)
+        self._wake_set(msg_id, role, "skipped", by_role, why or "跳过")
+        return "skipped"
+
+    def wake_run(self, msg_id, dry=False):
+        """把这条消息里**approved 且还没投递过**的角色叫起来（投递到他的固定会话）"""
+        rows = self.conn.execute(
+            "SELECT w.role FROM wake w WHERE w.msg_id=? AND w.state='approved' AND w.delivered_at IS NULL",
+            (msg_id,)).fetchall()
+        m = self.conn.execute("SELECT kind,from_role,topic,body FROM v_msg WHERE id=?", (msg_id,)).fetchone()
+        out = []
+        for (role,) in rows:
+            text = "【%s #%d】%s: %s%s" % ("私信" if m[0] == "private" else "广播", msg_id, m[1],
+                                          (m[2] + " — ") if m[2] else "", m[3])
+            if dry:
+                out.append((role, "dry"))
+                continue
+            try:
+                self.deliver(role, text)
+                self.conn.execute("UPDATE wake SET delivered_at=? WHERE msg_id=? AND role=?",
+                                  (now_ts(), msg_id, role))
+                self.conn.commit()
+                out.append((role, "ok"))
+            except Exception as e:
+                out.append((role, str(e)[:60]))
+        return out
+
     # ---------- 读 ----------
     def inbox(self, role=None):
         """等我回的：广播 / 私信 / 明确标了必读的；default 只是"谁都可见的记录"，不算待办"""
@@ -630,7 +812,9 @@ def main():
                                     "capture", "seen", "init-owner", "pause", "start", "status",
                                     "stage-add", "gate", "gate-open", "gate-done", "report", "blocked",
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
-                                    "attach", "since-json", "setting", "notify", "relay"])
+                                    "attach", "since-json", "setting", "notify", "relay",
+                                    "reg", "wake", "wake-ok", "wake-skip", "wake-run",
+                                    "member", "member-add", "member-del"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -668,7 +852,8 @@ def main():
 
     # 控制类命令要**以"下令的人"的身份连库**（--by，默认 owner.me），
     # 不能拿 --role（那是被管的对象/阶段归属）去连 —— 否则会被自己的权限检查拦下（踩过两次）
-    if a.cmd in ("pause", "start", "stage-add", "gate-open", "gate-done"):
+    if a.cmd in ("pause", "start", "stage-add", "gate-open", "gate-done",
+                 "member-add", "member-del", "wake-ok", "wake-skip"):
         t = Talk(a.by or "owner.me")
     elif a.cmd == "report":
         t = Talk(a.frm or a.role)          # 报告是"角色自己"交的活
@@ -686,7 +871,7 @@ def main():
         t.conn.commit()
         print("权限已加：%s %s/%s" % (a.role, a.scope, a.action))
     elif a.cmd == "send":
-        mid = t.send(a.frm, a.to, a.kind, a.topic, a.body, a.must_reply)
+        mid = t.send(a.frm, a.to, a.kind, a.topic, a.body, a.must_reply, scope=a.scope)
         print("#%d 已记入 %s" % (mid, log_path(a.kind, a.frm, a.to)))
     elif a.cmd == "reply":
         t.reply(a.id, a.frm, a.body)
@@ -736,6 +921,42 @@ def main():
         print("%s：%s" % (a.role, b or "可以收活（没被阶段卡住）"))
     elif a.cmd == "since-json":
         print(json.dumps(t.since_json(a.id or 0), ensure_ascii=False))
+    elif a.cmd == "reg":
+        # 有参数＝直接注册；没参数＝TUI 逐项问（换场景时用这个）
+        if a.full:
+            scene, _, name = a.full.partition(".")
+        else:
+            print("注册一个角色（回车用默认）")
+            scene = input("  场景（组，比如 home / pipeline）：").strip()
+            name = input("  角色名（字母数字短横线，比如 maid）：").strip()
+            a.title = input("  描述（它是干什么的）：").strip() or a.title
+            a.scope = input("  标签（逗号分隔，比如 生活,助理）：").strip() or a.scope
+        full = t.reg_role(scene, name, a.title or "", a.scope or "")
+        print("已注册：" + t.reg_line(full))
+        print("（面板/roles-json 会按场景分组显示它；要它参与对话就 talk.py spawn --role %s）" % full)
+    elif a.cmd == "member-add":
+        print(t.member_add(a.scope or "", a.role, a.by or "owner.me"))
+    elif a.cmd == "member-del":
+        print(t.member_del(a.scope or "", a.role, a.by or "owner.me"))
+    elif a.cmd == "member":
+        rows = t.member_list(a.scope or None)
+        if not rows:
+            print("（接入表还空着 —— 广播时会退回「该场景全部角色」）")
+        for ch, role, by, at, title in rows:
+            print("%-14s %-24s %-12s %s" % (ch, role, title or "", by or ""))
+    elif a.cmd == "wake":
+        rows = t.wake_list(a.id or None)
+        if not rows:
+            print("（还没有唤醒记录）")
+        for mid, role, state, by, why, topic, kind in rows:
+            print("#%-4d %-24s %-9s %-10s %s" % (mid, role, state, by or "-", why or (topic or "")))
+    elif a.cmd == "wake-ok":
+        print(t.wake_ok(a.id, a.role, a.by or "owner.me"), "→", a.role)
+    elif a.cmd == "wake-skip":
+        print(t.wake_skip(a.id, a.role, a.by or "owner.me", a.why), "→", a.role)
+    elif a.cmd == "wake-run":
+        for role, res in t.wake_run(a.id, a.dry):
+            print("%-24s %s" % (role, res))
     elif a.cmd == "setting":
         if a.text:
             t.setting_set(a.name, a.text)

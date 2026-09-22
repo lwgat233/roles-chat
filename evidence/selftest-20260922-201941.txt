@@ -1,6 +1,6 @@
-== roles-chat 自检 2026-09-22 20:09:33 ==
-OK   角色名册登记成功（≥4） | 5
-OK   三类消息都写进日志了（default/broadcast/private） | [96, 97, 98]
+== roles-chat 自检 2026-09-22 20:19:41 ==
+OK   角色名册登记成功（≥4） | 9
+OK   三类消息都写进日志了（default/broadcast/private） | [119, 120, 121]
 OK   tester 搜到 default
 OK   tester 搜到 broadcast
 OK   tester 搜到 private（它是收件人）
@@ -12,10 +12,10 @@ OK   加了 msg:all/read 的审计角色能看到私信
 OK   经理看不到别人之间的私信（0 条） | 0
 OK   经理直读 msg 表也被库拒绝（只能走视图） | access to msg.id is prohibited
 OK   经理的管理权还在（能排阶段、能放行）
-OK   tester 收件箱有广播 | [97, 98]
-OK   tester 收件箱有私信 | [97, 98]
-OK   renderer 收件箱有广播（全体） | [97]
-OK   renderer 收件箱没有别人的私信 | [97]
+OK   tester 收件箱有广播 | [120, 118, 121]
+OK   tester 收件箱有私信 | [120, 118, 121]
+OK   renderer 收件箱有广播（全体） | [120, 118]
+OK   renderer 收件箱没有别人的私信 | [120, 118]
 OK   私信写在 private-author__tester 文件里 | 2026-09-22-private-pipeline.author__pipeline.tester.md
 OK   broadcast 文件里没有私信正文
 OK   renderer 能读的文件里没有私信文件 | ['2026-09-22-broadcast.md', '2026-09-22-default.md']
