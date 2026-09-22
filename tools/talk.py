@@ -547,6 +547,19 @@ class Talk:
                 return False
         except Exception:
             pass
+        # 本机什么都没有？从 GitHub 拉一份再装（换机器就用这条路）
+        dest = os.environ.get("ROLES_CHAT_HOME") or os.path.join(os.path.expanduser("~"), "roles-chat")
+        repo = os.environ.get("ROLES_CHAT_REPO", "https://github.com/lwgat233/roles-chat.git")
+        bs = os.path.join(ROOT, "tools", "bootstrap.sh")
+        if os.path.exists(bs):
+            subprocess.run(["bash", bs, ROOT], capture_output=True)
+            return True
+        if not os.path.exists(os.path.join(ROOT, "install.sh")):
+            subprocess.run(["git", "clone", repo, dest], capture_output=True)
+            sh2 = os.path.join(dest, "install.sh")
+            if os.path.exists(sh2):
+                subprocess.run(["bash", sh2], cwd=dest, capture_output=True)
+                return True
         sh = os.path.join(ROOT, "install.sh")
         if os.path.exists(sh):
             subprocess.run(["bash", sh], cwd=ROOT, capture_output=True)
@@ -1199,7 +1212,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
