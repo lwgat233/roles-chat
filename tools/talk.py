@@ -518,6 +518,26 @@ class Talk:
         mid = self.send(from_role, None, "default", "报告 %s" % feat, body, feature=feat)
         return mid
 
+    def session_del(self, name):
+        """删一个会话：是角色的就杀掉他那个窗口（角色本身还在，可以再拉起）；不是角色的就把整个 tmux 会话关掉。"""
+        fn = self.resolve_role(name) if hasattr(self, "resolve_role") else None
+        if not fn:
+            r = self.conn.execute("SELECT full_name FROM role WHERE full_name=? OR name=? ", (name, name)).fetchone()
+            fn = r[0] if r else None
+        if fn:
+            win = fn.replace(".", "-")
+            out = subprocess.run(["tmux", "kill-window", "-t", "roles:" + win], capture_output=True, text=True)
+            if out.returncode != 0:
+                win2 = fn.replace("-", "_")
+                out = subprocess.run(["tmux", "kill-window", "-t", "roles:" + win2], capture_output=True, text=True)
+            if out.returncode != 0:
+                return {"deleted": False, "why": (out.stderr or "").strip() or "没找到他的会话", "role": fn}
+            return {"deleted": True, "what": "window", "role": fn, "target": "roles:" + win}
+        out = subprocess.run(["tmux", "kill-session", "-t", name], capture_output=True, text=True)
+        if out.returncode != 0:
+            return {"deleted": False, "why": (out.stderr or "").strip() or "没找到这个会话"}
+        return {"deleted": True, "what": "session", "name": name}
+
     def doctor(self):
         """自检：库就绪吗 / 每个角色是不是真有窗口 / 中转站活着吗（客户端每次启动都问一次）"""
         out = {"db": os.path.exists(DB), "tmux": subprocess.run(
@@ -1226,7 +1246,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch", "session-del"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -1378,6 +1398,8 @@ def main():
         built = t._ensure_ready()
         d = t.doctor()
         print(json.dumps({"built": built, "doctor": d}, ensure_ascii=False))
+    elif a.cmd == "session-del":
+        print(json.dumps(t.session_del(a.name), ensure_ascii=False))
     elif a.cmd == "switch":
         print(json.dumps(t.switch(a.role), ensure_ascii=False))
     elif a.cmd == "doctor":
