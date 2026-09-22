@@ -79,6 +79,20 @@ def run():
         au = talk.Talk("pipeline.auditor")
         check("加了 msg:all/read 的审计角色能看到私信", len([x for x in au.search(WORD) if x[1] == "private"]) == 1)
 
+        # --- 经理：有管理权，但**看不到别人的私信**（用户 2026-09-22 定）---
+        admin.init_owner()
+        mgr = talk.Talk("owner.me")
+        mgr_priv = [x for x in mgr.search(WORD) if x[1] == "private"]
+        check("经理看不到别人之间的私信（0 条）", len(mgr_priv) == 0, len(mgr_priv))
+        try:
+            mgr.conn.execute("SELECT * FROM msg").fetchall()
+            check("经理直读 msg 表也被库拒绝（只能走视图）", False, "竟然读到了")
+        except sqlite3.DatabaseError as e:
+            check("经理直读 msg 表也被库拒绝（只能走视图）", True, str(e)[:30])
+        mgr.stage_add(WORD, 1, "经理测试步", "pipeline.author")
+        mgr.gate_open(WORD, 1, "owner.me")
+        check("经理的管理权还在（能排阶段、能放行）", mgr.blocked_reason("pipeline.author") is None)
+
         # --- inbox：等我回的（广播/私信都算）---
         ti = [x[0] for x in t.inbox("pipeline.tester")]
         ri = [x[0] for x in r.inbox("pipeline.renderer")]

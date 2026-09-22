@@ -74,7 +74,8 @@ class Talk:
         self.conn = sqlite3.connect(path)
         self.conn.executescript(SCHEMA)
         self.conn.commit()
-        self.admin = self._is_admin()
+        self.admin = (role is None) or self._has("msg:all", "read")   # 看全部内容（含私信）
+        self.manage = self._can_manage()                              # 管理权（改名册/放行阶段/暂停）
         if role:
             self._install_guard()
         else:
@@ -84,13 +85,14 @@ class Talk:
             self.conn.execute("CREATE TEMP VIEW v_msg AS SELECT * FROM msg")
 
     # ---------- 权限 ----------
-    def _is_admin(self):
-        if not self.role:
+    def _can_manage(self):
+        """管理权：改名册 / 改权限 / 放行阶段 / 暂停恢复（代表"我"的经理角色有，普通角色没有）"""
+        if self.role is None:
             return True
-        r = self.conn.execute(
-            "SELECT 1 FROM perm WHERE full_name=? AND scope='table:role' AND action='write'",
-            (self.role,)).fetchone()
-        return bool(r) or self.role == "system.admin"
+        return self._has("table:role", "write") or self._has("room:control", "write")
+
+    def _is_admin(self):
+        return self.admin
 
     def _has(self, scope, action):
         r = self.conn.execute(
@@ -109,12 +111,14 @@ class Talk:
         self.conn.execute("DROP VIEW IF EXISTS v_msg")
         self.conn.execute("CREATE TEMP VIEW v_msg AS SELECT * FROM msg WHERE " + cond)
 
-        admin = self.admin
+        admin = self.manage
 
         def auth(action, arg1, arg2, dbname, source):
             if action == sqlite3.SQLITE_READ:
-                if arg1 == "msg" and source != "v_msg" and not all_read and not admin:
-                    return sqlite3.SQLITE_DENY        # 直接读 msg 表：不给
+                # 只有"他本人"（不带角色的连接，也就是看板/命令行）或明确拿了 msg:all/read 的角色能直读 msg；
+                # **经理虽有管理权，也不该知道私信内容** —— 它同样只能走按身份过滤的视图（用户 2026-09-22 定）
+                if arg1 == "msg" and source != "v_msg" and not all_read and role is not None:
+                    return sqlite3.SQLITE_DENY
                 return sqlite3.SQLITE_OK
             if action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE):
                 if arg1 in ("role", "perm") and not admin:
@@ -260,11 +264,13 @@ class Talk:
             print("%-26s %-9s %-6s %s" % (r, self.state_of("role:" + r), "活着" if alive else "-", pend))
         print("房间：%s" % self.state_of("room"))
 
-    def init_owner(self, full="owner.me", title="我（管理者）"):
+    def init_owner(self, full="owner.me", title="我（经理：能管流程，但看不到私信内容）"):
         self.conn.execute("INSERT OR REPLACE INTO role(full_name,scene,name,title,created_at) VALUES(?,?,?,?,?)",
                           (full, full.split(".")[0], full.split(".")[1], title, now_ts()))
-        for scope, action in [("msg:all", "read"), ("msg:all", "write"),
-                              ("room:control", "write"), ("table:role", "write")]:
+        # 注意：**不给 msg:all/read** —— 经理管得了流程，但看不到别人之间的私信（用户 2026-09-22 定）
+        # 同时清掉历史遗留的 msg:all 授权（改规则前给过，不清就会"旧权限还在、经理照样能看"）
+        self.conn.execute("DELETE FROM perm WHERE full_name=? AND scope IN ('msg:all')", (full,))
+        for scope, action in [("room:control", "write"), ("table:role", "write")]:
             self.conn.execute("INSERT OR REPLACE INTO perm(full_name,scope,action,created_at) VALUES(?,?,?,?)",
                               (full, scope, action, now_ts()))
         self.conn.commit()
@@ -325,7 +331,8 @@ class Talk:
     def gate_done(self, project, seq, by_role):
         """阶段收工：必须有该阶段的**格式合格的交付报告**（feature 里记着 P#N）才允许"""
         feat = "%s#%d" % (project, seq)
-        n = self.conn.execute("SELECT COUNT(*) FROM msg WHERE feature=? AND topic LIKE '报告%'", (feat,)).fetchone()[0]
+        # 走视图查（经理读不到 msg 表本身 —— 库拦得对，这里就不能直查表；见 P 记的那条规矩）
+        n = self.conn.execute("SELECT COUNT(*) FROM v_msg WHERE feature=? AND topic LIKE '报告%'", (feat,)).fetchone()[0]
         if not n:
             raise RuntimeError("%s 第 %d 步还没有合格报告（先 run report），不放行下一步" % (project, seq))
         if not self._can_control():
@@ -377,6 +384,27 @@ class Talk:
                            capture_output=True, text=True)
         return p.stdout
 
+    def watch(self, poll=1.0, once=False, since=None):
+        """实时跟随：新消息一出现就打印（他本人＝带 🔒 的私信也看得到；带 --role 就是那个角色有权看的）
+        公开频道刷新 / pocket 的频道面板就跑这一条。游标按 **id** 走（时间戳是秒级的，会重复刷同一条）。"""
+        last = self.conn.execute("SELECT COALESCE(MAX(id),0) FROM v_msg").fetchone()[0]
+        if since is not None:
+            last = since
+        while True:
+            rows = self.conn.execute(
+                "SELECT id,kind,from_role,to_role,topic,body,created_at,must_reply FROM v_msg"
+                " WHERE id > ? ORDER BY id", (last,)).fetchall()
+            for r in rows:
+                tag = {"private": "🔒", "broadcast": "📢", "default": "· "}[r[1]]
+                first = (r[5] or "").splitlines()[0][:90] if r[5] else ""
+                print("%s#%-3d [%s] %-22s → %-22s | %-12s | %s" % (
+                    tag, r[0], fmt(r[6]), r[2], r[3] or "全体", r[4] or "-", first), flush=True)
+            if rows:
+                last = max(r[0] for r in rows)
+            if once:
+                return
+            time.sleep(poll)
+
     def mark_seen(self, msg_id, role):
         self.conn.execute("INSERT OR REPLACE INTO seen(msg_id, role, seen_at) VALUES(?,?,?)",
                           (msg_id, role, now_ts()))
@@ -422,7 +450,10 @@ def main():
     ap.add_argument("cmd", choices=["role-add", "perm-add", "send", "reply", "inbox", "search",
                                     "files", "selftest", "roles", "board", "tail", "spawn", "deliver",
                                     "capture", "seen", "init-owner", "pause", "start", "status",
-                                    "stage-add", "gate", "gate-open", "gate-done", "report", "blocked"])
+                                    "stage-add", "gate", "gate-open", "gate-done", "report", "blocked",
+                                    "watch"])
+    ap.add_argument("--poll", type=float, default=1.0)
+    ap.add_argument("--once", action="store_true")
     ap.add_argument("--by", default=None)
     ap.add_argument("--why", default="")
     ap.add_argument("--hard", action="store_true")
@@ -521,6 +552,8 @@ def main():
     elif a.cmd == "blocked":
         b = t.blocked_reason(a.role)
         print("%s：%s" % (a.role, b or "可以收活（没被阶段卡住）"))
+    elif a.cmd == "watch":
+        t.watch(a.poll, a.once)
     elif a.cmd == "deliver":
         body = a.text or sys.stdin.read()
         if a.id:
@@ -534,7 +567,7 @@ def main():
         print("#%d 已标已读（%s）" % (a.id, a.role))
     elif a.cmd == "init-owner":
         full = t.init_owner(a.full or "owner.me")
-        print("管理者角色已建：%s（msg:all 读写 + room:control 写 + 名册管理）" % full)
+        print("经理角色已建：%s（room:control 写 + 名册管理；**不给 msg:all**——管流程但看不到私信）" % full)
     elif a.cmd == "pause":
         by = a.by or "owner.me"
         target = a.role or "全体"
