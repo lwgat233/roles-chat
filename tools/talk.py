@@ -582,6 +582,10 @@ class Talk:
         r = self.conn.execute("SELECT name FROM stage WHERE project=? AND seq=?", (project, seq)).fetchone()
         return r[0] if r else "?"
 
+    def stage_role(self, project, seq):
+        r = self.conn.execute("SELECT role FROM stage WHERE project=? AND seq=?", (project, seq)).fetchone()
+        return r[0] if r else ""
+
     def gate_done(self, project, seq, by_role):
         """阶段收工：必须有该阶段的**格式合格的交付报告**（feature 里记着 P#N）才允许"""
         feat = "%s#%d" % (project, seq)
@@ -778,6 +782,44 @@ class Talk:
         return {"ok": True, "role": full, "绑定": bind or ("roles:" + win_name(full)),
                 "会话目标": bind or ("roles:" + win_name(full)), "匹配方式": mode, "cmd": cmd}
 
+    # ---------- 角色切换通报：经理把"切到谁 + 项目走到哪"带给本人 ----------
+    def progress_line(self, project=None, limit=4):
+        """项目进度一句话式概览（给通知用）：X/Y 步完成 · 当前是谁 / 下一步等谁。"""
+        rows = list(self.stages(project))
+        if not rows:
+            return "（还没有登记项目阶段）"
+        by = {}
+        for p, s, name, role, state in rows:
+            by.setdefault(p, []).append((s, name, role, state))
+        out = []
+        for p in sorted(by)[:limit]:
+            steps = sorted(by[p])
+            done = sum(1 for st in steps if st[3] == "done")
+            act = [st for st in steps if st[3] == "active"]
+            if act:
+                s, name, role, _ = act[0]
+                cur = "当前 ◀ 第 %d 步 %s（%s）" % (s, name, role)
+            else:
+                nxt = [st for st in steps if st[3] == "locked"]
+                cur = ("下一步待放行：第 %d 步 %s（%s）" % (nxt[0][0], nxt[0][1], nxt[0][2])
+                       if nxt else "全部步骤已结束")
+            out.append("%s：%d/%d 步完成 · %s" % (p, done, len(steps), cur))
+        return "\n".join(out)
+
+    def notify_role_switch(self, role, prev=None, reason="", push=True):
+        """角色切换 → 经理告知本人（QQ，经女仆）：切到谁、为什么、项目进度走到哪。
+
+        调用方必须用**管理员连接**（Talk(None)）或经理身份，否则 send() 会以
+        "我是 X，不能替 owner.me 发言" 拒掉；署名固定 owner.me＝经理。
+        """
+        prev = (prev if prev is not None else (self.state_get("active_role", "") or ""))
+        body = "角色切换：%s → %s" % (prev or "（未记录）", role)
+        if reason:
+            body += "\n为什么切：%s" % reason
+        body += "\n项目进度：\n" + self.progress_line()
+        self.state_set("active_role", role)
+        return self.tell_user("告知", body, frm="owner.me", topic="角色切换", push=push)
+
     def get_setting(self, k, default=""):
         try:
             r = self.conn.execute("SELECT v FROM setting WHERE k=?", (k,)).fetchone()
@@ -817,7 +859,8 @@ class Talk:
             subprocess.run(["tmux", "send-keys", "-t", sess, "-l", text], check=True)
             time.sleep(0.12)
             subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=True)
-        subprocess.run(["tmux", "delete-buffer", "-b", buf], check=False)   # 单行分支没建过缓冲区，删失败不算错
+        subprocess.run(["tmux", "delete-buffer", "-b", buf], check=False,
+                       capture_output=True)   # 单行分支没建过缓冲区，删失败不算错（也别吓人）
         return sess
 
     def capture(self, role, n=1000):
@@ -1104,6 +1147,71 @@ class Talk:
         return {"count": len(rows), "items": [
             {"msg": r[0], "role": r[1], "ok": bool(r[2]), "note": r[3] or "", "at": r[4],
              "topic": r[5] or "", "body": (r[6] or "")[:40]} for r in rows]}
+
+    # ---------- 逾期追问：派了活 N 分钟没回音，经理去问一句 ----------
+    # 纯告知/已解决类不追（它们本来就不需要回话）
+    NUDGE_SKIP_TOPIC = ("【告知", "【已解决", "【收工", "【进度")
+
+    def overdue_deliveries(self, minutes=45, limit=20):
+        """投给某个角色、过了 minutes 分钟、那个角色还没回话的活。
+
+        判据：delivery.ok=1 且 (msg_id, role) 上没有该角色的 reply 行。
+        排除发给经理自己的（那不是派活）和纯告知类。
+        """
+        rows = self.conn.execute(
+            "SELECT d.msg_id, d.role, d.at, COALESCE(m.topic,''), COALESCE(m.body,'') FROM delivery d"
+            " JOIN msg m ON m.id = d.msg_id"
+            " WHERE d.ok = 1 AND (? - d.at) > ? AND d.role NOT IN ('me','owner.me')"
+            "   AND NOT EXISTS (SELECT 1 FROM reply r WHERE r.msg_id = d.msg_id AND r.from_role = d.role)"
+            " ORDER BY d.at LIMIT ?", (now_ts(), int(minutes) * 60, limit)).fetchall()
+        return [r for r in rows if not str(r[3]).startswith(self.NUDGE_SKIP_TOPIC)]
+
+    def nudge(self, minutes=45, limit=20, dry=False, max_nudges=2):
+        """经理的追问：派出去的活超时没回音 → 去问一句"做了没"；问够次数或对方会话不在 → 报本人（卡住）。
+
+        幂等：pref['nudge:<msg>:<role>'] = "<上次时间>|<次数>"，不到 minutes 不再问同一件事。
+        dry=True 只列出来，不投递也不上报。
+        """
+        out, now = [], now_ts()
+        mins = int(minutes)
+        for mid, role, at, topic, body in self.overdue_deliveries(mins, limit):
+            key = "nudge:%d:%s" % (mid, role)
+            raw = (self.state_get(key, "") or "").split("|")
+            last = int(raw[0]) if raw and raw[0].isdigit() else 0
+            count = int(raw[1]) if len(raw) > 1 and raw[1].isdigit() else 0
+            if last and (now - last) < mins * 60:
+                continue                                   # 刚问过，别连环催
+            age = int((now - at) / 60)
+            online = self.role_online(role)
+            if (not online) or count >= max_nudges:
+                why = "会话不在" if not online else "追问 %d 次仍没回音" % count
+                if dry:
+                    out.append((mid, role, age, "会报你：%s" % why, count + 1))
+                    continue
+                try:
+                    self.tell_user("卡住", "%s 的「%s」#%d 投出 %d 分钟没回音（%s）"
+                                   % (role, topic or "-", mid, age, why),
+                                   frm="owner.me", topic="卡住")
+                except Exception as e:
+                    out.append((mid, role, age, "上报失败: %s" % e, count))
+                    continue
+                self.state_set(key, "%d|%d" % (now, count + 1))
+                out.append((mid, role, age, "已报你：%s" % why, count + 1))
+                continue
+            text = ("【追问】#%d「%s」投给你已经 %d 分钟了，我这边没看到回话。\n"
+                    "做了没？做到哪一步？按交付格式回一条（做了什么 / 证据 / 判据 / 依赖），别憋着。\n"
+                    "回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\""
+                    % (mid, topic or "-", age, mid, role))
+            if dry:
+                out.append((mid, role, age, "会去问", count + 1))
+                continue
+            try:
+                self.deliver(role, text)
+                out.append((mid, role, age, "已问", count + 1))
+            except Exception as e:
+                out.append((mid, role, age, "问不进去: %s" % e, count))
+            self.state_set(key, "%d|%d" % (now, count + 1))
+        return out
 
     def asks_json(self):
         """还没答的授权/拍板请求 —— 面板上"谁在等你"就靠它"""
@@ -1404,14 +1512,29 @@ class Talk:
 
     # ---------- 读 ----------
     def inbox(self, role=None):
-        """等我回的：广播 / 私信 / 明确标了必读的；default 只是"谁都可见的记录"，不算待办"""
+        """等我回的：广播 / 私信 / 明确标了必读的；default 只是"谁都可见的记录"，不算待办""
+
+        另加一类（2026-09-22 修）：**别人回了我发出去的消息**。
+        回复是用 `reply` 写回、挂在原消息下面的，不进 msg 表的"发给谁"，
+        所以原来经理问女仆一句、女仆回了、经理的 inbox 里还是空的 ——
+        用户问"你没收到女仆的指令吗"就是这么来的。标已读（seen）后才消。
+        """
         role = role or self.role
-        rows = self.conn.execute(
+        rows = list(self.conn.execute(
             "SELECT m.id, m.kind, m.from_role, m.to_role, m.topic, m.must_reply, m.created_at FROM v_msg m"
             " WHERE (m.kind IN ('broadcast','private') OR m.must_reply = 1)"
             "   AND (m.kind != 'private' OR m.to_role = ?)"
             "   AND NOT EXISTS (SELECT 1 FROM reply r WHERE r.msg_id = m.id AND r.from_role = ?)"
-            " ORDER BY m.must_reply DESC, m.created_at", (role, role)).fetchall()
+            " ORDER BY m.must_reply DESC, m.created_at", (role, role)).fetchall())
+        try:
+            rows += list(self.conn.execute(
+                "SELECT m.id, 'reply', r.from_role, ?, m.topic, 1, r.created_at"
+                " FROM reply r JOIN v_msg m ON m.id = r.msg_id"
+                " WHERE m.from_role = ? AND r.from_role <> ?"
+                "   AND NOT EXISTS (SELECT 1 FROM seen s WHERE s.msg_id = r.msg_id AND s.role = ?)"
+                " ORDER BY r.created_at", (role, role, role, role)).fetchall())
+        except Exception:
+            pass          # 老库没有 reply/seen 表也不能把 inbox 整个弄崩
         return rows
 
     def search(self, q, role=None):
@@ -1446,7 +1569,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run", "wake-purge",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--session", default=None, help="要绑的会话（roles:home-maid 或 hermes）")
@@ -1478,6 +1601,10 @@ def main():
     ap.add_argument("--id", type=int, default=0)
     ap.add_argument("--must-reply", action="store_true")
     ap.add_argument("--q", default="")
+    ap.add_argument("--minutes", type=int, default=45,
+                    help="逾期追问阈值（分钟，默认 45）")
+    ap.add_argument("--max", type=int, default=2,
+                    help="同一件事最多追问几次（默认 2，超过就报给本人）")
     a = ap.parse_args()
 
     if a.cmd == "selftest":
@@ -1557,9 +1684,24 @@ def main():
     elif a.cmd == "gate-open":
         t.gate_open(a.project, a.seq, a.by or "owner.me")
         print("已放行：%s 第 %d 步（后面的仍锁着）" % (a.project, a.seq))
+        # 放行 = 下一个角色接手的那一刻（"做任务时角色切换"）→ 由经理告知本人
+        try:
+            role = t.stage_role(a.project, a.seq)
+            n = t.notify_role_switch(role, reason="阶段放行：%s 第 %d 步 %s" % (
+                a.project, a.seq, t.stage_name(a.project, a.seq)), push=(a.dry is not True))
+            print("已由女仆带话给本人：#%d（角色切换 → %s）" % (n["id"], role))
+        except Exception as e:
+            print("角色切换通报失败：%s" % e)
     elif a.cmd == "gate-done":
         t.gate_done(a.project, a.seq, a.by or "owner.me")
         print("已判定完成：%s 第 %d 步" % (a.project, a.seq))
+        try:
+            n = t.tell_user("告知", "%s 第 %d 步「%s」已判定完成。\n项目进度：\n%s" % (
+                a.project, a.seq, t.stage_name(a.project, a.seq), t.progress_line()),
+                frm="owner.me", topic="进度", push=(a.dry is not True))
+            print("已由女仆带话给本人：#%d（进度）" % n["id"])
+        except Exception as e:
+            print("进度通报失败：%s" % e)
     elif a.cmd == "report":
         body = a.text or sys.stdin.read()
         mid = t.report(a.project, a.seq, a.frm or a.role, body)
@@ -1617,7 +1759,17 @@ def main():
     elif a.cmd == "session-del":
         print(json.dumps(t.session_del(a.name), ensure_ascii=False))
     elif a.cmd == "switch":
-        print(json.dumps(t.switch_role(a.role), ensure_ascii=False))
+        res = t.switch_role(a.role)
+        if res.get("ok"):
+            # 面板/命令行切角色 → 由经理告知本人（署名 owner.me，必须用管理员连接；
+            # 以被切到的角色身份连库会被 send() 的"我不能替 owner.me 发言"拒掉）
+            try:
+                n = Talk(None).notify_role_switch(res["role"], reason="面板/命令行切换",
+                                                  push=(a.dry is not True))
+                res["通知"] = {"id": n["id"], "kind": n["kind"], "pushed": n["pushed"]}
+            except Exception as e:
+                res["通知"] = "告知失败：%s" % e
+        print(json.dumps(res, ensure_ascii=False))
     elif a.cmd == "doctor":
         print(json.dumps(t.doctor(), ensure_ascii=False))
     elif a.cmd == "deliveries":
@@ -1666,15 +1818,27 @@ def main():
         print("中转一轮：游标=%d 投递=%s 收回答=%s" % (r["cursor"], r["delivered"] or "无", r["collected"] or "无"))
     elif a.cmd == "relay-daemon":
         import time as _t
-        print("中转站起来了（每 %d 秒一轮，Ctrl-C 停）" % (a.poll or 5))
+        print("中转站起来了（每 %d 秒一轮；逾期追问阈值 %d 分钟、最多 %d 次；Ctrl-C 停）"
+              % (a.poll or 5, a.minutes, a.max))
+        last_nudge = 0.0
         while True:
             try:
                 r = t.relay_once()
                 if r["delivered"] or r["collected"]:
                     print("  投递=%s 收回答=%s" % (r["delivered"], r["collected"]))
+                if _t.time() - last_nudge >= 60:          # 每分钟扫一次逾期（同一件事按分钟节流）
+                    last_nudge = _t.time()
+                    for mid, role, age, what, n in t.nudge(a.minutes, max_nudges=a.max):
+                        print("  追问 #%d → %s（过了 %d 分钟，%s，第 %d 次）" % (mid, role, age, what, n))
             except Exception as e:
                 print("  一轮出错：%s" % e)
             _t.sleep(a.poll or 5)
+    elif a.cmd == "nudge":
+        rows = t.nudge(a.minutes, dry=a.dry, max_nudges=a.max)
+        if not rows:
+            print("没有逾期没回的活（阈值 %d 分钟）" % a.minutes)
+        for mid, role, age, what, n in rows:
+            print("#%-4d %-22s 已过 %3d 分钟  %s（第 %d 次）" % (mid, role, age, what, n))
     elif a.cmd == "relay":
         n, tgt, text = t.relay(a.text or None, a.dry)
         print("中转 %d 条 → %s%s" % (n, tgt or "(没设目标)", "（dry-run 只打印不发）" if a.dry else ""))

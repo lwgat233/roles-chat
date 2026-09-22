@@ -6,3 +6,6 @@
 
 [2026-09-22 23:40:42] pipeline.author → 全体 | 全体? 是 | 话题:广播-selftest1790091642 | 必读:是 | #643
     broadcast 消息：对全体 selftest1790091642
+
+[2026-09-22 23:58:38] pipeline.author → 全体 | 全体? 是 | 话题:广播-selftest1790092718 | 必读:是 | #653
+    broadcast 消息：对全体 selftest1790092718
