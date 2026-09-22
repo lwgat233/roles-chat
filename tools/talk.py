@@ -411,12 +411,24 @@ class Talk:
         return False, "这个会话没有角色（%s）：只有经理或女仆能给它发指令，%s 无权" % (target, by)
 
     def send_to_session(self, target, text, by=None):
-        """给一个 session 发指令（无角色的要过权限关）。"""
+        """给一个 session 真发指令（无角色的要过权限关）。返回里带读屏证据，不许只说"发了"。"""
         by = by or self.by_role or "owner.me"
         ok, why = self.can_send_to_session(by, target)
         if not ok:
             raise PermissionError(why)
-        return {"sent": True, "to": target, "by": by, "role": self.role_of_target(target), "why": why}
+        txt = (text or "").rstrip("\n")
+        if not txt.strip():
+            return {"sent": False, "why": "没内容可发", "to": target, "by": by}
+        try:
+            subprocess.run(["tmux", "send-keys", "-t", target, "-l", txt], check=True, capture_output=True)
+            subprocess.run(["tmux", "send-keys", "-t", target, "Enter"], check=True, capture_output=True)
+        except Exception as e:
+            return {"sent": False, "why": "发不进去：%s" % e, "to": target, "by": by}
+        time.sleep(0.6)
+        pane = subprocess.run(["tmux", "capture-pane", "-p", "-t", target, "-S", "-4"], capture_output=True, text=True)
+        tail = [l.strip() for l in (pane.stdout or "").splitlines() if l.strip()][-2:]
+        return {"sent": True, "to": target, "by": by, "role": self.role_of_target(target),
+                "why": why, "他屏上的最后两行": tail}
 
     def role_bind(self, role, target):
         """把角色绑到一个已存在的 session 上（改了它就固定用这个回答）。"""
