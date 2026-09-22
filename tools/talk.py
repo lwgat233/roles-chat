@@ -487,11 +487,12 @@ class Talk:
             for r in roles:
                 ch_by_role.setdefault(r, []).append(channel)
         scenes = {}
-        for full, scene, name, title, tags in self.conn.execute(
-                "SELECT full_name,scene,name,title,COALESCE(tags,'') FROM role ORDER BY scene, full_name"):
+        for full, scene, name, title, tags, bind in self.conn.execute(
+                "SELECT full_name,scene,name,title,COALESCE(tags,''),COALESCE(bind,'') FROM role ORDER BY scene, full_name"):
             alive = self.role_online(full)
             scenes.setdefault(scene, []).append({
                 "full_name": full, "name": name, "title": title or "", "tags": (tags or ""),
+                "bind": bind or "",
                 "state": self.state_of("role:" + full),
                 "session": alive,
                 "online": alive and self.state_of("role:" + full) != "paused",
@@ -1147,7 +1148,7 @@ class Talk:
             pass
         return "%s来自 %s #%d" % (base, frm, mid)
 
-    def watchdog_notify(self, msg_id):
+    def watchdog_notify(self, msg_id, frm=None):
         """看门狗（需放行的事）一律报女仆，由女仆转告本人；同一条只报一次；女仆不授权。"""
         key = "watchdog_notified:%s" % msg_id
         try:
@@ -1164,7 +1165,7 @@ class Talk:
             if r0:
                 rw = dict(zip(names, r0))
                 scope = rw.get("scope") or rw.get("kind") or "?"
-                who = rw.get("from_role") or "?"
+                who = frm or rw.get("from_role") or "?"
                 body = (rw.get("body") or "").replace("\n", " ")[:60]
         except Exception as e:
             body = "（取不到原文：%s）" % e
