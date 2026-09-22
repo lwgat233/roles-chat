@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS reply(
   id INTEGER PRIMARY KEY AUTOINCREMENT, msg_id INTEGER, from_role TEXT, body TEXT, created_at INTEGER);
 CREATE TABLE IF NOT EXISTS seen(
   msg_id INTEGER, role TEXT, seen_at INTEGER, PRIMARY KEY(msg_id, role));
+CREATE TABLE IF NOT EXISTS room(
+  scope TEXT PRIMARY KEY, state TEXT, by_role TEXT, why TEXT, updated_at INTEGER);
 """
 
 
@@ -113,6 +115,9 @@ class Talk:
             if action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE):
                 if arg1 in ("role", "perm") and not admin:
                     return sqlite3.SQLITE_DENY        # 名册与权限：只有管理员能改
+                if arg1 == "room":
+                    # 房间/角色状态：有 room:control/write 的管理者才能改（"我"那个角色）
+                    return sqlite3.SQLITE_OK if (admin or self._has("room:control", "write")) else sqlite3.SQLITE_DENY
                 if arg1 in ("msg", "reply", "seen"):
                     return sqlite3.SQLITE_OK          # 发言权：人人有
                 return sqlite3.SQLITE_DENY
@@ -204,6 +209,63 @@ class Talk:
             txt.extend(open(p, encoding="utf-8").read().splitlines())
         print("\n".join(txt[-n:]))
 
+    # ---------- 管理者（代表"我"的角色，如 owner.me）：开始 / 停止 / 让他们交流 ----------
+    # 权限是数据：谁的 perm 里有 room:control/write，谁就能下令；下令本身也记进对话（大家看得见）。
+    def _can_control(self):
+        return self.admin or self._has("room:control", "write")
+
+    def state_of(self, scope):
+        r = self.conn.execute("SELECT state FROM room WHERE scope=?", (scope,)).fetchone()
+        return r[0] if r else "running"
+
+    def set_state(self, scope, state, by_role, why=""):
+        if not self._can_control():
+            raise PermissionError("只有管理者能控制（缺 room:control/write）：%s" % by_role)
+        self.conn.execute("INSERT OR REPLACE INTO room(scope,state,by_role,why,updated_at) VALUES(?,?,?,?,?)",
+                          (scope, state, by_role, why, now_ts()))
+        self.conn.commit()
+        self.send(by_role, None, "default", "控制", "【%s】%s%s" % (
+            state, ("全体" if scope == "room" else scope), ("：" + why) if why else ""))
+        return state
+
+    def is_paused(self, role=None):
+        if self.state_of("room") == "paused":
+            return "room"
+        if role and self.state_of("role:" + role) == "paused":
+            return "role"
+        return None
+
+    def stop_role(self, role, hard=False):
+        """让她停：先发 /stop 打断当前回合；hard=True 连 tmux 会话一起收"""
+        sess = self.tmux_session(role)
+        alive = subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode == 0
+        if alive:
+            if hard:
+                subprocess.run(["tmux", "kill-session", "-t", sess], capture_output=True)
+            else:
+                subprocess.run(["tmux", "send-keys", "-t", sess, "/stop", "Enter"], capture_output=True)
+        return alive
+
+    def status(self):
+        roles = [r[0] for r in self.conn.execute("SELECT full_name FROM role ORDER BY full_name")]
+        print("%-26s %-9s %-6s %s" % ("角色", "状态", "会话", "待回"))
+        for r in roles:
+            sess = self.tmux_session(r)
+            alive = subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode == 0
+            pend = len(self.inbox(r)) if self.admin else 0
+            print("%-26s %-9s %-6s %s" % (r, self.state_of("role:" + r), "活着" if alive else "-", pend))
+        print("房间：%s" % self.state_of("room"))
+
+    def init_owner(self, full="owner.me", title="我（管理者）"):
+        self.conn.execute("INSERT OR REPLACE INTO role(full_name,scene,name,title,created_at) VALUES(?,?,?,?,?)",
+                          (full, full.split(".")[0], full.split(".")[1], title, now_ts()))
+        for scope, action in [("msg:all", "read"), ("msg:all", "write"),
+                              ("room:control", "write"), ("table:role", "write")]:
+            self.conn.execute("INSERT OR REPLACE INTO perm(full_name,scope,action,created_at) VALUES(?,?,?,?)",
+                              (full, scope, action, now_ts()))
+        self.conn.commit()
+        return full
+
     # ---------- 投递到角色的 tmux 会话 ----------
     @staticmethod
     def tmux_session(role):
@@ -216,8 +278,11 @@ class Talk:
         subprocess.run(["tmux", "new-session", "-d", "-s", sess, "-x", "120", "-y", "40", run], check=True)
         return sess
 
-    def deliver(self, role, text):
+    def deliver(self, role, text, force=False):
         """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）"""
+        p = self.is_paused(role)
+        if p and not force:
+            raise RuntimeError("已暂停（%s），不投递：%s —— 管理者用 start 恢复" % (p, role))
         sess = self.tmux_session(role)
         if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode != 0:
             raise RuntimeError("角色 %s 没有会话（先 spawn）" % role)
@@ -242,10 +307,12 @@ class Talk:
 
     # ---------- 读 ----------
     def inbox(self, role=None):
+        """等我回的：广播 / 私信 / 明确标了必读的；default 只是"谁都可见的记录"，不算待办"""
         role = role or self.role
         rows = self.conn.execute(
             "SELECT m.id, m.kind, m.from_role, m.to_role, m.topic, m.must_reply, m.created_at FROM v_msg m"
-            " WHERE (m.to_role = ? OR m.kind='broadcast' OR m.kind='default')"
+            " WHERE (m.kind IN ('broadcast','private') OR m.must_reply = 1)"
+            "   AND (m.kind != 'private' OR m.to_role = ?)"
             "   AND NOT EXISTS (SELECT 1 FROM reply r WHERE r.msg_id = m.id AND r.from_role = ?)"
             " ORDER BY m.must_reply DESC, m.created_at", (role, role)).fetchall()
         return rows
@@ -277,7 +344,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["role-add", "perm-add", "send", "reply", "inbox", "search",
                                     "files", "selftest", "roles", "board", "tail", "spawn", "deliver",
-                                    "capture", "seen"])
+                                    "capture", "seen", "init-owner", "pause", "start", "status"])
+    ap.add_argument("--by", default=None)
+    ap.add_argument("--why", default="")
+    ap.add_argument("--hard", action="store_true")
+    ap.add_argument("--force", action="store_true")
     ap.add_argument("--role", default=None)
     ap.add_argument("--profile", default=None)
     ap.add_argument("--lines", type=int, default=1000)
@@ -301,7 +372,12 @@ def main():
         import talk_selftest
         return talk_selftest.run()
 
-    t = Talk(a.role)
+    # 控制类命令要**以"下令的人"的身份连库**（--by，默认 owner.me），
+    # 不能拿 --role（那是被管的对象）去连 —— 否则会被自己的权限检查拦下（踩过）
+    if a.cmd in ("pause", "start"):
+        t = Talk(a.by or "owner.me")
+    else:
+        t = Talk(a.role)
     if a.cmd == "role-add":
         scene, _, name = a.full.partition(".")
         t.conn.execute("INSERT OR REPLACE INTO role(full_name,scene,name,title,created_at) VALUES(?,?,?,?,?)",
@@ -350,6 +426,35 @@ def main():
     elif a.cmd == "seen":
         t.mark_seen(a.id, a.role)
         print("#%d 已标已读（%s）" % (a.id, a.role))
+    elif a.cmd == "init-owner":
+        full = t.init_owner(a.full or "owner.me")
+        print("管理者角色已建：%s（msg:all 读写 + room:control 写 + 名册管理）" % full)
+    elif a.cmd == "pause":
+        by = a.by or "owner.me"
+        target = a.role or "全体"
+        scope = "room" if (target in ("全体", "all", "room", "")) else "role:" + target
+        t.set_state(scope, "paused", by, a.why)
+        detail = ""
+        if scope != "room":
+            alive = t.stop_role(target, a.hard)
+            detail = "（会话%s）" % ("已收掉" if (alive and a.hard) else ("已发 /stop" if alive else "本来就没跑"))
+        print("已暂停：%s%s" % (target, detail))
+    elif a.cmd == "start":
+        by = a.by or "owner.me"
+        target = a.role or "全体"
+        scope = "room" if (target in ("全体", "all", "room", "")) else "role:" + target
+        t.set_state(scope, "running", by, a.why)
+        detail = ""
+        if scope != "room":
+            sess = t.tmux_session(target)
+            if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode != 0:
+                t.spawn(target, a.profile)
+                detail = "（已开会话 %s）" % sess
+            else:
+                detail = "（会话本来就在 %s）" % sess
+        print("已恢复：%s%s" % (target, detail))
+    elif a.cmd == "status":
+        t.status()
     return 0
 
 

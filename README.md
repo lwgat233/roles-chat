@@ -24,6 +24,23 @@ evidence/                自检输出
 角色开连接时挂 **SQLite 授权器**：直接读 `msg` 表被拒（`access to msg.id is prohibited`），只能走按身份拼好的
 TEMP 视图 `v_msg`；名册/权限表只有管理员角色能改（`not authorized`）。私信连**文本文件层面**都不进别人的可读清单。
 
+## 管理者（代表"我"的角色：owner.me）
+
+```bash
+python3 tools/talk.py init-owner                       # 建 owner.me：msg:all 读写 + room:control 写 + 名册管理
+python3 tools/talk.py status                           # 谁在跑 / 谁被停 / 谁还欠回复 / 房间状态
+python3 tools/talk.py pause --role <全名> --by owner.me --why "先停一下"     # 停一个角色（发 /stop，--hard 连会话收掉）
+python3 tools/talk.py pause --by owner.me --why "全体停"                     # 停全体：房间暂停，投递一律被拒
+python3 tools/talk.py start --role <全名> --by owner.me [--profile <名>]     # 恢复（没会话就现场开）
+```
+
+规矩：
+- **控制权是数据**（`perm` 里的 `room:control/write`），不是代码分支；非管理者下令被拒
+  （实测：`只有管理者能控制（缺 room:control/write）`），连"停自己"也不行。
+- **暂停期间 `deliver` 一律拒绝**（除非 `--force`），所以角色真的收不到新活。
+- 下令本身也写进对话（`话题:控制`），**大家看得见谁在什么时候让谁停/开**。
+- 状态在 `room` 表（scope=`room` 或 `role:<全名>`），重启不丢。
+
 ## 常用命令
 ```bash
 # 角色与权限
