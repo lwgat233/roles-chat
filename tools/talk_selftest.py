@@ -110,6 +110,16 @@ def run():
         check("私信写在 private-author__tester 文件里", have(priv), os.path.basename(priv))
         check("broadcast 文件里没有私信正文", os.path.exists(bcast) and "private 消息" not in open(bcast, encoding="utf-8").read())
         _rvis = [f for f in r.visible_files("pipeline.renderer") if "-private-" in f]
+        # --- 角色 ↔ session 绑定：绑了就用绑的，没绑就用默认窗口 ---
+        _fn = "pipeline.tester"
+        check("没绑时用默认窗口", r.tmux_session(_fn) == "roles:pipeline-tester", r.tmux_session(_fn))
+        _b = r.role_bind(_fn, "roles:home-maid")
+        check("bind 后只用这个 session", _b.get("ok") and r.tmux_session(_fn) == "roles:home-maid", _b)
+        _bad = r.role_bind(_fn, "roles:no-such-window-xyz")
+        check("绑到不存在的会话要拒", (not _bad.get("ok")) and "没有这个会话" in _bad.get("why", ""), _bad.get("why"))
+        r.role_unbind(_fn)
+        check("解绑后回到默认窗口", r.tmux_session(_fn) == "roles:pipeline-tester", r.tmux_session(_fn))
+
         check("renderer 看不到跟自己无关的私信文件",
               not any("pipeline.renderer" not in f for f in _rvis),
               _rvis[:3])

@@ -1317,7 +1317,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "hermes-sessions"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "bind", "unbind", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -1471,6 +1471,13 @@ def main():
         print(json.dumps({"built": built, "doctor": d}, ensure_ascii=False))
     elif a.cmd == "hermes-sessions":
         print(json.dumps(t.hermes_sessions(), ensure_ascii=False))
+    elif a.cmd == "bind":
+        r = t.role_bind(a.role, a.session)
+        print(json.dumps(r, ensure_ascii=False))
+        if not r.get("ok"):
+            raise SystemExit(1)
+    elif a.cmd == "unbind":
+        print(json.dumps(t.role_unbind(a.role), ensure_ascii=False))
     elif a.cmd == "session-del":
         print(json.dumps(t.session_del(a.name), ensure_ascii=False))
     elif a.cmd == "switch":
