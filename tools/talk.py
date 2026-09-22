@@ -547,6 +547,27 @@ class Talk:
             {"id": r[0], "kind": r[1], "from": r[2], "to": r[3], "topic": r[4],
              "body": r[5], "at": r[6], "must_reply": bool(r[7])} for r in rows]}
 
+    def ask(self, from_role, what, options="", topic="要你授权", target="home.maid"):
+        """角色要授权/拍板：先落一条给他的对话（默认发给可爱女仆），标上"要向他知道"，然后中转。
+        —— 授权/审批这条路也归女仆：她收、她整理、她推给他，他答完她再转回去（用户 2026-09-22 定）。"""
+        sc = self.conn.execute("SELECT scene FROM role WHERE full_name=?", (from_role,)).fetchone()
+        who = "%s（场景 %s / 会话 %s）" % (from_role, sc[0] if sc else "-", self.tmux_session(from_role))
+        body = "【要授权/拍板】来自 " + who + "\n" + what + ("" if not options else "\n可选项：" + options)
+        mid = self.send(from_role, target, "private", topic, body)
+        self.mark_notify(mid)
+        return mid
+
+    def answer(self, ask_id, text, by_role="owner.me"):
+        """他答了（从 QQ 或命令行）：记成他发的消息回给提问的人，并把这问标成已答"""
+        r = self.conn.execute("SELECT from_role,topic FROM msg WHERE id=?", (ask_id,)).fetchone()
+        if not r:
+            raise ValueError("没有这条提问：%s" % ask_id)
+        to_role, topic = r[0], r[1]
+        mid = self.send(by_role, to_role, "private", "答复:" + (topic or ""), text)
+        self.conn.execute("UPDATE notify SET pushed_at=COALESCE(pushed_at,? ) WHERE msg_id=?", (now_ts(), ask_id))
+        self.conn.commit()
+        return mid
+
     def setting_get(self, k, default=None):
         r = self.conn.execute("SELECT v FROM setting WHERE k=?", (k,)).fetchone()
         return r[0] if r else default
@@ -814,7 +835,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del"])
+                                    "member", "member-add", "member-del", "ask", "answer"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -934,6 +955,12 @@ def main():
         full = t.reg_role(scene, name, a.title or "", a.scope or "")
         print("已注册：" + t.reg_line(full))
         print("（面板/roles-json 会按场景分组显示它；要它参与对话就 talk.py spawn --role %s）" % full)
+    elif a.cmd == "ask":
+        mid = t.ask(a.frm or a.role, a.text or a.body, "", a.topic or "要你授权")
+        print("#%d 已登记提问 → 女仆会带着「哪个角色 / 哪个会话」转达给他" % mid)
+    elif a.cmd == "answer":
+        mid = t.answer(a.id, a.text or a.body, a.by or "owner.me")
+        print("#%d 已记入你的答复并回给提问的人" % mid)
     elif a.cmd == "member-add":
         print(t.member_add(a.scope or "", a.role, a.by or "owner.me"))
     elif a.cmd == "member-del":
