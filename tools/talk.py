@@ -827,6 +827,15 @@ class Talk:
         out.sort(key=lambda x: x["at"])
         return {"role": role, "count": len(out), "items": out}
 
+    def deliveries_json(self, limit=20):
+        """投递台账（面板显示"谁收了、谁没收、为什么"）"""
+        rows = self.conn.execute(
+            "SELECT d.msg_id,d.role,d.ok,d.note,d.at,m.topic,m.body FROM delivery d"
+            " LEFT JOIN v_msg m ON m.id=d.msg_id ORDER BY d.msg_id DESC, d.role LIMIT ?", (limit,)).fetchall()
+        return {"count": len(rows), "items": [
+            {"msg": r[0], "role": r[1], "ok": bool(r[2]), "note": r[3] or "", "at": r[4],
+             "topic": r[5] or "", "body": (r[6] or "")[:40]} for r in rows]}
+
     def asks_json(self):
         """还没答的授权/拍板请求 —— 面板上"谁在等你"就靠它"""
         rows = self.conn.execute(
@@ -1117,7 +1126,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -1254,6 +1263,8 @@ def main():
         print("已删 %s（连带清掉 %d 条权限、%d 条接入）" % (r["deleted"], r["perms_removed"], r["members_removed"]))
     elif a.cmd == "thread":
         print(json.dumps(t.thread(a.role, a.lines or 100), ensure_ascii=False))
+    elif a.cmd == "deliveries":
+        print(json.dumps(t.deliveries_json(a.lines or 20), ensure_ascii=False))
     elif a.cmd == "asks":
         print(json.dumps(t.asks_json(), ensure_ascii=False))
     elif a.cmd == "answer":
