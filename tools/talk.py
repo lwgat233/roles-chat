@@ -414,19 +414,18 @@ class Talk:
         return tmux, created
 
     def spawn(self, role, profile=None, launch=None):
-        """给角色开一个 tmux 会话（**幂等**：已经在跑就不动它）；会话名固定 = role-<场景>-<角色>"""
-        sess = self.target(role)
-        if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode == 0:
+        """给角色在 roles 会话里开一个**窗口**（幂等）；一个 tmux 装所有角色，不再一个角色一个会话"""
+        win = win_name(role)
+        ensure_tmux_session()
+        sess = "%s:%s" % (TMUX_SESSION, win)
+        if win in tmux_windows():
             return sess, False
-        # Hermes 侧也是"同一个会话续着走"：-c <角色全名> --create-if-missing
+        # Hermes 侧同一个会话续着走：-c <角色全名> --create-if-missing
         run = launch or ("hermes %s chat -c %s --create-if-missing" % (
             ("-p " + profile) if profile else "", role))
-        subprocess.run(["tmux", "new-session", "-d", "-s", sess, "-x", "120", "-y", "40", run], check=True)
-        self._remember("role", role, role, sess, role, "角色会话（固定，幂等）")
+        subprocess.run(["tmux", "new-window", "-t", TMUX_SESSION + ":", "-n", win, run], check=True)
+        self._remember("role", role, role, sess, role, "角色窗口（roles 会话内，幂等）")
         return sess, True
-
-    # ---------- 项目阶段（经理闸门）：只放行当前阶段，后面的人收不到活 ----------
-    REPORT_FIELDS = ["做了什么", "证据", "判据", "依赖"]
 
     def stage_add(self, project, seq, name, role):
         self.conn.execute("INSERT OR REPLACE INTO stage(project,seq,name,role,state,updated_at)"
@@ -504,7 +503,7 @@ class Talk:
 
     def role_online(self, role):
         """在线 = 他在 roles 里有窗口（或旧的独立会话还活着）"""
-        return (win_name(role) in tmux_windows()) or self._alive(tmux_session(role))
+        return (win_name(role) in tmux_windows()) or self._alive(self.tmux_session(role))
 
     def deliver(self, role, text, force=False):
         """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）"""
