@@ -1028,7 +1028,11 @@ class Talk:
         cur = cursor if cursor is not None else int(self.state_get("relay_cursor", "0") or 0)
         sent = []
         rows = self.conn.execute(
-            "SELECT id,kind,from_role,to_role,scope,body FROM v_msg WHERE id>? AND from_role IN ('me','owner.me','home.maid')"
+            # 投递候选：① me/owner.me/home.maid 发的（经理与女仆说的，所有收件人都要送）
+            #           ② **任何发给经理本人的**（角色交报告/回话时给我发的私信——原来这类一条都不投，
+            #              于是「他报告交完了、经理不知道」：门铃不响，最长干等了 8 小时）
+            "SELECT id,kind,from_role,to_role,scope,body FROM v_msg WHERE id>?"
+            " AND (from_role IN ('me','owner.me','home.maid') OR to_role IN ('owner.me','me'))"
             " ORDER BY id", (cur,)).fetchall()
         for mid, kind, frm, to_role, scope, body in rows:
             if not deliver:
@@ -1234,22 +1238,32 @@ class Talk:
              "topic": r[5] or "", "body": (r[6] or "")[:40]} for r in rows]}
 
     # ---------- 逾期追问：派了活 N 分钟没回音，经理去问一句 ----------
-    # 纯告知/已解决类不追（它们本来就不需要回话）
-    NUDGE_SKIP_TOPIC = ("【告知", "【已解决", "【收工", "【进度")
+    # 纯告知/状态类不追（它们本来就不需要逐条回话）。
+    # 规矩（2026-09-23 测试者实测报的刷屏事故后定）：**要逐条回话的只有四类 —— 派活 / 放行 / 授权 / 选择**；
+    # 「控制」类状态告知（【running】/【paused】）＝收到即读，不进追问队列；
+    # 转告与结论类（【告知/【已解决/【收工/【进度/【卡住/【决定/【纠正】）同样不追 ——
+    # 否则一停一开就凭空生出待回项，追问自己还会自我繁殖（实测整夜 80 条）。
+    NUDGE_SKIP_TOPIC = ("【告知", "【已解决", "【收工", "【进度", "【卡住", "【决定", "【纠正", "控制")
 
     def overdue_deliveries(self, minutes=45, limit=20):
         """投给某个角色、过了 minutes 分钟、那个角色还没回话的活。
 
         判据：delivery.ok=1 且 (msg_id, role) 上没有该角色的 reply 行。
-        排除发给经理自己的（那不是派活）和纯告知类。
+        排除发给经理/女仆的（那不是派活）、纯告知类与状态告知。
         """
         rows = self.conn.execute(
             "SELECT d.msg_id, d.role, d.at, COALESCE(m.topic,''), COALESCE(m.body,'') FROM delivery d"
             " JOIN msg m ON m.id = d.msg_id"
-            " WHERE d.ok = 1 AND (? - d.at) > ? AND d.role NOT IN ('me','owner.me')"
+            " WHERE d.ok = 1 AND (? - d.at) > ? AND d.role NOT IN ('me','owner.me','home.maid')"
             "   AND NOT EXISTS (SELECT 1 FROM reply r WHERE r.msg_id = d.msg_id AND r.from_role = d.role)"
             " ORDER BY d.at LIMIT ?", (now_ts(), int(minutes) * 60, limit)).fetchall()
-        return [r for r in rows if not str(r[3]).startswith(self.NUDGE_SKIP_TOPIC)]
+        out = []
+        for r in rows:
+            topic, body = str(r[3] or ""), str(r[4] or "")
+            if topic.startswith(self.NUDGE_SKIP_TOPIC) or body.startswith(("【running】", "【paused】")):
+                continue
+            out.append(r)
+        return out
 
     def nudge(self, minutes=45, limit=20, dry=False, max_nudges=2):
         """经理的追问：派出去的活超时没回音 → 去问一句"做了没"；问够次数或对方会话不在 → 报本人（卡住）。
@@ -1257,7 +1271,7 @@ class Talk:
         幂等：pref['nudge:<msg>:<role>'] = "<上次时间>|<次数>"，不到 minutes 不再问同一件事。
         dry=True 只列出来，不投递也不上报。
         """
-        out, now = [], now_ts()
+        out, now, esc = [], now_ts(), []
         mins = int(minutes)
         for mid, role, at, topic, body in self.overdue_deliveries(mins, limit):
             key = "nudge:%d:%s" % (mid, role)
@@ -1270,17 +1284,15 @@ class Talk:
             online = self.role_online(role)
             if (not online) or count >= max_nudges:
                 why = "会话不在" if not online else "追问 %d 次仍没回音" % count
+                if self.state_get(key + ":esc", ""):
+                    continue          # 同一件事只报一次：2026-09-23 实测原逻辑每轮重报，整夜 66 条
                 if dry:
-                    out.append((mid, role, age, "会报你：%s" % why, count + 1))
+                    out.append((mid, role, age, "会报你：%s（只报一次）" % why, count + 1))
                     continue
-                try:
-                    self.tell_user("卡住", "%s 的「%s」#%d 投出 %d 分钟没回音（%s）"
-                                   % (role, topic or "-", mid, age, why),
-                                   frm="owner.me", topic="卡住")
-                except Exception as e:
-                    out.append((mid, role, age, "上报失败: %s" % e, count))
-                    continue
+                self.state_set(key + ":esc", "%d" % now)
                 self.state_set(key, "%d|%d" % (now, count + 1))
+                esc.append("#%d %s「%s」投出 %d 分钟没回音（%s）"
+                           % (mid, role, topic or "-", age, why))
                 out.append((mid, role, age, "已报你：%s" % why, count + 1))
                 continue
             text = ("【追问】#%d「%s」投给你已经 %d 分钟了，我这边没看到回话。\n"
@@ -1296,6 +1308,9 @@ class Talk:
             except Exception as e:
                 out.append((mid, role, age, "问不进去: %s" % e, count))
             self.state_set(key, "%d|%d" % (now, count + 1))
+        if esc and not dry:
+            self.tell_user("卡住", "有 %d 件事没回音（合并一条，各报一次不再重复）：\n%s"
+                           % (len(esc), "\n".join(esc)), frm="owner.me", topic="卡住")
         return out
 
     def asks_json(self):
