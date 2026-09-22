@@ -336,11 +336,11 @@ class Talk:
             for r in roles:
                 ch_by_role.setdefault(r, []).append(channel)
         scenes = {}
-        for full, scene, name, title in self.conn.execute(
-                "SELECT full_name,scene,name,title FROM role ORDER BY scene, full_name"):
+        for full, scene, name, title, tags in self.conn.execute(
+                "SELECT full_name,scene,name,title,COALESCE(tags,'') FROM role ORDER BY scene, full_name"):
             alive = self._alive(self.tmux_session(full))
             scenes.setdefault(scene, []).append({
-                "full_name": full, "name": name, "title": title or "",
+                "full_name": full, "name": name, "title": title or "", "tags": (tags or ""),
                 "state": self.state_of("role:" + full),
                 "session": alive,
                 "online": alive and self.state_of("role:" + full) != "paused",
@@ -568,6 +568,26 @@ class Talk:
         self.conn.execute("UPDATE notify SET answered_at=? WHERE msg_id=?", (now_ts(), ask_id))
         self.conn.commit()
         return mid
+
+    def role_edit(self, full, title=None, tags=None, scene=None, name=None, by_role="owner.me"):
+        """改角色信息（经理）。改场景/角色名 = 改"身份证"：role 表与 perm 一起搬。"""
+        if not self._can_control():
+            raise PermissionError("只有经理能改角色信息：%s" % by_role)
+        row = self.conn.execute("SELECT scene,name,title,tags FROM role WHERE full_name=?", (full,)).fetchone()
+        if not row:
+            raise ValueError("没有这个角色：%s" % full)
+        sc, nm, ti, tg = row
+        nsc = (scene if scene not in (None, "") else sc)
+        nnm = (name if name not in (None, "") else nm)
+        nfull = nsc + "." + nnm
+        nti = ti if title is None else title
+        ntg = tg if tags is None else tags
+        self.conn.execute("UPDATE role SET scene=?,name=?,full_name=?,title=?,tags=? WHERE full_name=?",
+                          (nsc, nnm, nfull, nti, ntg, full))
+        if nfull != full:
+            self.conn.execute("UPDATE perm SET full_name=? WHERE full_name=?", (nfull, full))
+        self.conn.commit()
+        return {"full": nfull, "was": full, "scene": nsc, "name": nnm, "title": nti or "", "tags": ntg or ""}
 
     def asks_json(self):
         """还没答的授权/拍板请求 —— 面板上"谁在等你"就靠它"""
@@ -844,7 +864,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -863,6 +883,8 @@ def main():
     ap.add_argument("--text", default="")
     ap.add_argument("--full", default=None)
     ap.add_argument("--title", default="")
+    ap.add_argument("--tags", default=None)
+    ap.add_argument("--scene", default=None)
     ap.add_argument("--scope", default=None)
     ap.add_argument("--action", default="read")
     ap.add_argument("--from", dest="frm", default=None)
@@ -967,6 +989,9 @@ def main():
     elif a.cmd == "ask":
         mid = t.ask(a.frm or a.role, a.text or a.body, "", a.topic or "要你授权")
         print("#%d 已登记提问 → 女仆会带着「哪个角色 / 哪个会话」转达给他" % mid)
+    elif a.cmd == "role-edit":
+        r = t.role_edit(a.full, a.title, a.tags, a.scene, a.name, a.by or "owner.me")
+        print("已改：%s → %s  描述=%s 标签=%s" % (r["was"], r["full"], r["title"] or "-", r["tags"] or "-"))
     elif a.cmd == "asks":
         print(json.dumps(t.asks_json(), ensure_ascii=False))
     elif a.cmd == "answer":
