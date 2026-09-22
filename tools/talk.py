@@ -438,6 +438,7 @@ class Talk:
 
     def spawn(self, role, profile=None, launch=None):
         """给角色在 roles 会话里开一个**窗口**（幂等）；一个 tmux 装所有角色，不再一个角色一个会话"""
+        self._ensure_ready()          # 还没搭就先搭：没有搭建也可以拉起来时搭
         win = win_name(role)
         ensure_tmux_session()
         sess = "%s:%s" % (TMUX_SESSION, win)
@@ -516,6 +517,41 @@ class Talk:
         feat = "%s#%d" % (project, seq)
         mid = self.send(from_role, None, "default", "报告 %s" % feat, body, feature=feat)
         return mid
+
+    def doctor(self):
+        """自检：库就绪吗 / 每个角色是不是真有窗口 / 中转站活着吗（客户端每次启动都问一次）"""
+        out = {"db": os.path.exists(DB), "tmux": subprocess.run(
+            ["tmux", "has-session", "-t", TMUX_SESSION], capture_output=True).returncode == 0,
+            "roles": [], "missing": []}
+        try:
+            rows = [r[0] for r in self.conn.execute("SELECT full_name FROM role ORDER BY full_name")]
+        except Exception:
+            rows = []
+        out["roles_total"] = len([r for r in rows if r not in ("owner.me", "me")])
+        for full in rows:
+            if full in ("owner.me", "me"):
+                continue
+            ok = self.role_online(full)
+            out["roles"].append({"role": full, "session": ok})
+            if not ok:
+                out["missing"].append(full)
+        r = subprocess.run(["systemctl", "--user", "is-active", "roles-relay.service"],
+                           capture_output=True, text=True)
+        out["relay"] = (r.stdout or "").strip() or "unknown"
+        return out
+
+    def _ensure_ready(self):
+        """服务端还没搭？就地搭起来 —— 客户端『拉起他』时也会走到这儿"""
+        try:
+            if os.path.exists(DB) and self.conn.execute("SELECT COUNT(*) FROM role").fetchone()[0] > 0:
+                return False
+        except Exception:
+            pass
+        sh = os.path.join(ROOT, "install.sh")
+        if os.path.exists(sh):
+            subprocess.run(["bash", sh], cwd=ROOT, capture_output=True)
+            return True
+        return False
 
     def target(self, role):
         """这个角色该投到哪：优先 roles:<窗口名>（新），退而用旧的 role-xxx 会话"""
@@ -1163,7 +1199,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -1220,6 +1256,11 @@ def main():
                        (a.full, scene, name, a.title, now_ts()))
         t.conn.commit()
         print("角色已登记：%s（%s）" % (a.full, a.title))
+        try:
+            r = t.tell_user("收工", "%s 交了「%s」第 %s 阶段的报告" % (a.role, a.project, a.seq), frm=a.role)
+            print("已由女仆带话给本人：#%d（收工）" % r["id"])
+        except Exception as e:
+            print("带话失败：%s" % e)
     elif a.cmd == "perm-add":
         t.conn.execute("INSERT OR REPLACE INTO perm(full_name,scope,action,created_at) VALUES(?,?,?,?)",
                        (a.role, a.scope, a.action, now_ts()))
@@ -1274,6 +1315,12 @@ def main():
     elif a.cmd == "blocked":
         b = t.blocked_reason(a.role)
         print("%s：%s" % (a.role, b or "可以收活（没被阶段卡住）"))
+        if a.why:
+            try:
+                r = t.tell_user("卡住", "%s 卡住了：%s" % (a.role, a.why), frm=a.role)
+                print("已由女仆带话给本人：#%d" % r["id"])
+            except Exception as e:
+                print("带话失败：%s" % e)
     elif a.cmd == "since-json":
         print(json.dumps(t.since_json(a.id or 0), ensure_ascii=False))
     elif a.cmd == "reg":
@@ -1300,6 +1347,8 @@ def main():
         print("已删 %s（连带清掉 %d 条权限、%d 条接入）" % (r["deleted"], r["perms_removed"], r["members_removed"]))
     elif a.cmd == "thread":
         print(json.dumps(t.thread(a.role, a.lines or 100), ensure_ascii=False))
+    elif a.cmd == "doctor":
+        print(json.dumps(t.doctor(), ensure_ascii=False))
     elif a.cmd == "deliveries":
         print(json.dumps(t.deliveries_json(a.lines or 20), ensure_ascii=False))
     elif a.cmd == "asks":

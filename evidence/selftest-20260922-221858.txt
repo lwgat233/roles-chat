@@ -1,0 +1,33 @@
+== roles-chat 自检 2026-09-22 22:18:58 ==
+OK   角色名册登记成功（≥4） | 6
+OK   三类消息都写进日志了（default/broadcast/private） | [462, 463, 464]
+OK   tester 搜到 default
+OK   tester 搜到 broadcast
+OK   tester 搜到 private（它是收件人）
+OK   renderer 搜到 default（default 不看权限）
+OK   renderer 搜不到私信（0 条） | 0
+OK   renderer 直接读 msg 表被库拒绝 | access to msg.id is prohibited
+OK   renderer 改名册被库拒绝 | not authorized
+OK   加了 msg:all/read 的审计角色能看到私信
+OK   经理看不到别人之间的私信（0 条） | 0
+OK   经理直读 msg 表也被库拒绝（只能走视图） | access to msg.id is prohibited
+OK   经理的管理权还在（能排阶段、能放行）
+OK   tester 收件箱有广播 | [463, 334, 351, 361, 371, 464]
+OK   tester 收件箱有私信 | [463, 334, 351, 361, 371, 464]
+OK   renderer 收件箱有广播（全体） | [463, 334, 351, 361, 371]
+OK   renderer 收件箱没有别人的私信 | [463, 334, 351, 361, 371]
+OK   私信写在 private-author__tester 文件里 | 2026-09-22-private-pipeline.author__pipeline.tester.md
+OK   broadcast 文件里没有私信正文
+OK   renderer 能读的文件里没有私信文件 | ['2026-09-22-broadcast.md', '2026-09-22-default.md']
+OK   阶段初始全部 locked（后面的人收不到活）
+OK   放行第 1 步后：第 1 步的人能收活
+OK   放行第 1 步后：第 2 步的人仍被卡
+OK   阶段没放行时投递被卡 | 阶段没放行，不投递：pipeline.renderer（selftest1790
+OK   非经理不能放行阶段
+OK   报告缺字段被拒 | 交付格式不合格，缺：做了什么、证据、判据、依赖（格式见 RE
+OK   合格报告入库
+OK   报告合格后才允许放行下一步
+OK   收件人能回复私信
+OK   回复也入库了 | 1
+OK   收尾：测试消息清掉了 | 0
+---- 合计：OK=31 FAIL=0
