@@ -518,6 +518,32 @@ class Talk:
         mid = self.send(from_role, None, "default", "报告 %s" % feat, body, feature=feat)
         return mid
 
+    HERMES = "/home/lwgat/.hermes/hermes-agent/venv/bin/hermes"
+
+    def hermes_sessions(self, limit=40):
+        """用 hermes sessions 真扫历史会话（拿不到就返回空，不许假装有）。"""
+        exe = self.HERMES if os.path.exists(self.HERMES) else "hermes"
+        try:
+            out = subprocess.run([exe, "sessions", "list"], capture_output=True, text=True, timeout=30)
+        except Exception as e:
+            return {"ok": False, "why": str(e), "items": []}
+        txt = (out.stdout or "") + (out.stderr or "")
+        items = []
+        for ln in txt.splitlines():
+            ln = ln.strip()
+            if not ln or ln.lower().startswith(("usage", "view and manage", "positional", "options")):
+                continue
+            m = re.search(r"([0-9]{8}[_-][0-9]{6}[_-][0-9a-f]{4,})", ln)
+            if m:
+                rest = ln.replace(m.group(1), " ").strip(" \t|-·")
+                items.append({"id": m.group(1), "title": rest[:60]})
+        if not items:
+            for ln in txt.splitlines():
+                ln = ln.strip()
+                if ln and not ln.lower().startswith(("usage", "view")):
+                    items.append({"id": "", "title": ln[:60]})
+        return {"ok": True, "count": len(items), "items": items[:limit]}
+
     def session_del(self, name):
         """删一个会话：是角色的就杀掉他那个窗口（角色本身还在，可以再拉起）；不是角色的就把整个 tmux 会话关掉。"""
         fn = self.resolve_role(name) if hasattr(self, "resolve_role") else None
@@ -1246,7 +1272,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch", "session-del"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -1398,6 +1424,8 @@ def main():
         built = t._ensure_ready()
         d = t.doctor()
         print(json.dumps({"built": built, "doctor": d}, ensure_ascii=False))
+    elif a.cmd == "hermes-sessions":
+        print(json.dumps(t.hermes_sessions(), ensure_ascii=False))
     elif a.cmd == "session-del":
         print(json.dumps(t.session_del(a.name), ensure_ascii=False))
     elif a.cmd == "switch":
