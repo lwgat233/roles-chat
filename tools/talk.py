@@ -751,6 +751,28 @@ class Talk:
         self.state_set("relay_cursor", str(cur))
         return {"cursor": cur, "delivered": sent, "collected": collected}
 
+    # ---------- 上达：要本人拍板/知道的事，一律由女仆带话到 QQ ----------
+    TELL_KINDS = ("授权", "选择", "收工", "卡住", "告知")
+
+    def tell_user(self, kind, what, options="", frm="owner.me", topic=None, push=True):
+        """**由女仆把话带给本人**（QQ）：授权 / 选择 / 收工 / 卡住 都走这条。
+        女仆不授权、不替他决定 —— 她只负责"带到"（他答了再由女仆转回去）。
+        """
+        kind = kind if kind in self.TELL_KINDS else "告知"
+        body = str(what or "")
+        if options:
+            body += "\n可选项：" + str(options)
+        top = topic or kind
+        mid = self.send(frm, "home.maid", "private", "【%s】%s" % (kind, top), body)
+        self.mark_notify(mid)
+        pushed = None
+        if push:
+            try:
+                pushed = self.relay(dry=False)
+            except Exception as e:
+                pushed = "推失败：%s" % e
+        return {"id": mid, "kind": kind, "pushed": pushed}
+
     def ask(self, from_role, what, options="", topic="要你授权", target="home.maid"):
         """角色要授权/拍板：先落一条给他的对话（默认发给可爱女仆），标上"要向他知道"，然后中转。
         —— 授权/审批这条路也归女仆：她收、她整理、她推给他，他答完她再转回去（用户 2026-09-22 定）。"""
@@ -1126,7 +1148,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -1344,6 +1366,10 @@ def main():
         if not t._alive(target):
             print("会话不在：%s（先 spawn/solo）" % target); return 3
         print("tmux attach -t %s" % target)
+    elif a.cmd == "tell":
+        r = t.tell_user(a.kind or "告知", a.body or a.text or "", a.topic and "" or "", a.by or "owner.me",
+                        a.topic, push=(a.dry is not True))
+        print("已由女仆带话给本人：#%d（%s）推送=%s" % (r["id"], r["kind"], r["pushed"]))
     elif a.cmd == "say":
         r = t.say(a.role, a.body or a.text or "", a.topic or "私信", a.kind or "private")
         if r.get("broadcast"):
