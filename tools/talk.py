@@ -60,6 +60,9 @@ CREATE TABLE IF NOT EXISTS setting(k TEXT PRIMARY KEY, v TEXT, updated_at INTEGE
 -- 该不该通知他（角色标注）+ 推没推过（女仆中转用）
 CREATE TABLE IF NOT EXISTS notify(msg_id INTEGER PRIMARY KEY, marked_at INTEGER, pushed_at INTEGER, channel TEXT);
 -- 唤醒：一条消息该动谁（私信/@点名=直接 approved；广播=候选 pending，等经理放行/跳过）
+-- 中转站的投递台账：哪条消息投给了谁、什么时候、成没成
+CREATE TABLE IF NOT EXISTS delivery(
+  msg_id INTEGER, role TEXT, at INTEGER, ok INTEGER, note TEXT, PRIMARY KEY(msg_id, role));
 CREATE TABLE IF NOT EXISTS wake(
   msg_id INTEGER, role TEXT, state TEXT, by_role TEXT, why TEXT, at INTEGER, delivered_at INTEGER,
   PRIMARY KEY(msg_id, role));
@@ -648,6 +651,101 @@ class Talk:
             {"id": r[0], "kind": r[1], "from": r[2], "to": r[3], "topic": r[4],
              "body": r[5], "at": r[6], "must_reply": bool(r[7])} for r in rows]}
 
+    # ---------- 中转站：盯文本/库，按种类把话投给该收的人；并收角色的终端回答 ----------
+    KINDS = {"private": "私聊", "default": "定向（他人可见）", "broadcast": "广播"}
+
+    def relay_targets(self, kind, to_role, scope=None):
+        """这条该投给谁：私聊/定向 = 那个人；广播 = 接入表里的人（空则全体角色）"""
+        if kind in ("private", "default") and to_role and to_role not in ("全体", "all", "*"):
+            return [to_role]
+        rows = [r[0] for r in self.conn.execute(
+            "SELECT DISTINCT role FROM member WHERE role NOT IN ('owner.me','me') ORDER BY role").fetchall()]
+        if not rows:
+            rows = [r[0] for r in self.conn.execute(
+                "SELECT full_name FROM role WHERE full_name NOT IN ('owner.me','me') ORDER BY role").fetchall()]
+        if scope:
+            want = [x.strip() for x in str(scope).split(",") if x.strip()]
+            rows = [r for r in rows if r.split(".")[0] in want] or rows
+        return rows
+
+    def relay_label(self, kind, frm, mid):
+        tag = {"private": "【私聊】", "default": "【定向·他人可见】", "broadcast": "【频道广播】"}.get(kind, "【消息】")
+        return "%s来自 %s #%d" % (tag, frm, mid)
+
+    def extract_answer(self, screen):
+        """从角色的终端屏幕里抠出他最近一次回答（Hermes 的回答画在 ╭─ ☤ Hermes ─╮ 框里）"""
+        lines = str(screen or "").split("\n")
+        start = -1
+        for i in range(len(lines) - 1, -1, -1):
+            if "☤" in lines[i] and "╭" in lines[i]:
+                start = i
+                break
+        if start < 0:
+            return ""
+        out = []
+        for l in lines[start + 1:]:
+            if "╰" in l or re.match(r"^[─═]{5,}", l):
+                break
+            out.append(l.strip("│| "))
+        return "\n".join([x for x in out if x]).strip()
+
+    def relay_once(self, cursor=None, deliver=True, collect=True):
+        """跑一轮：① 把新消息投给该收的人（带种类标签）② 把角色的终端回答收成记录"""
+        cur = cursor if cursor is not None else int(self.state_get("relay_cursor", "0") or 0)
+        sent = []
+        rows = self.conn.execute(
+            "SELECT id,kind,from_role,to_role,scope,body FROM v_msg WHERE id>? AND from_role IN ('me','owner.me')"
+            " ORDER BY id", (cur,)).fetchall()
+        for mid, kind, frm, to_role, scope, body in rows:
+            if not deliver:
+                sent.append({"id": mid, "skipped": True})
+                continue
+            label = self.relay_label(kind, frm, mid)
+            for who in self.relay_targets(kind, to_role, scope):
+                text = "%s\n%s\n\n（回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\"；直接在这里说也行）" % (
+                    label, body, mid, who)
+                ok = True
+                try:
+                    self.deliver(who, text)
+                except Exception as e:
+                    ok = False
+                    text = str(e)
+                self.conn.execute("INSERT OR REPLACE INTO delivery(msg_id,role,at,ok,note) VALUES(?,?,?,?,?)",
+                                  (mid, who, now_ts(), 1 if ok else 0, text[:120] if not ok else ""))
+                sent.append({"id": mid, "to": who, "ok": ok})
+            cur = max(cur, mid)
+        # 收角色的终端回答 → 记成 reply（他不必自己调函数）
+        collected = []
+        if collect:
+            for (full,) in self.conn.execute("SELECT full_name FROM role WHERE full_name NOT IN ('owner.me','me')"):
+                if not self.role_online(full):
+                    continue
+                try:
+                    screen = tmux_out = subprocess.run(["tmux", "capture-pane", "-p", "-t", self.target(full)],
+                                                       capture_output=True, text=True).stdout
+                except Exception:
+                    continue
+                ans = self.extract_answer(screen)
+                if not ans:
+                    continue
+                key = "said_" + full
+                if ans == (self.state_get(key, "") or ""):
+                    continue
+                self.state_set(key, ans)
+                last = self.conn.execute(
+                    "SELECT id FROM v_msg WHERE (to_role=? OR from_role=?) AND from_role IN ('me','owner.me')"
+                    " ORDER BY id DESC LIMIT 1", (full, full)).fetchone()
+                mid = last[0] if last else 0
+                try:
+                    self.conn.execute("INSERT INTO reply(msg_id,by_role,body,created_at) VALUES(?,?,?,?)",
+                                      (mid, full, ans, now_ts()))
+                    collected.append({"role": full, "reply_to": mid})
+                except Exception:
+                    pass
+        self.conn.commit()
+        self.state_set("relay_cursor", str(cur))
+        return {"cursor": cur, "delivered": sent, "collected": collected}
+
     def ask(self, from_role, what, options="", topic="要你授权", target="home.maid"):
         """角色要授权/拍板：先落一条给他的对话（默认发给可爱女仆），标上"要向他知道"，然后中转。
         —— 授权/审批这条路也归女仆：她收、她整理、她推给他，他答完她再转回去（用户 2026-09-22 定）。"""
@@ -731,6 +829,21 @@ class Talk:
             " JOIN v_msg m ON m.id=n.msg_id WHERE n.answered_at IS NULL ORDER BY n.msg_id").fetchall()
         return {"count": len(rows), "asks": [
             {"id": r[0], "from": r[1], "topic": r[2], "body": r[3], "at": r[4]} for r in rows]}
+
+    def state_get(self, k, default=None):
+        """中转站自己的小状态（游标等）—— 不被业务用到，存在 pref 表"""
+        try:
+            r = self.conn.execute("SELECT v FROM pref WHERE k=?", (k,)).fetchone()
+            return r[0] if r else default
+        except Exception:
+            return default
+
+    def state_set(self, k, v):
+        try:
+            self.conn.execute("INSERT OR REPLACE INTO pref(k,v) VALUES(?,?)", (k, str(v)))
+            self.conn.commit()
+        except Exception:
+            pass
 
     def setting_get(self, k, default=None):
         r = self.conn.execute("SELECT v FROM setting WHERE k=?", (k,)).fetchone()
@@ -999,7 +1112,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -1173,6 +1286,20 @@ def main():
     elif a.cmd == "notify":
         t.mark_notify(a.id)
         print("#%d 已标：要她知道（女仆中转时会带上）" % a.id)
+    elif a.cmd == "relay-once":
+        r = t.relay_once(a.id if a.id else None)
+        print("中转一轮：游标=%d 投递=%s 收回答=%s" % (r["cursor"], r["delivered"] or "无", r["collected"] or "无"))
+    elif a.cmd == "relay-daemon":
+        import time as _t
+        print("中转站起来了（每 %d 秒一轮，Ctrl-C 停）" % (a.poll or 5))
+        while True:
+            try:
+                r = t.relay_once()
+                if r["delivered"] or r["collected"]:
+                    print("  投递=%s 收回答=%s" % (r["delivered"], r["collected"]))
+            except Exception as e:
+                print("  一轮出错：%s" % e)
+            _t.sleep(a.poll or 5)
     elif a.cmd == "relay":
         n, tgt, text = t.relay(a.text or None, a.dry)
         print("中转 %d 条 → %s%s" % (n, tgt or "(没设目标)", "（dry-run 只打印不发）" if a.dry else ""))
