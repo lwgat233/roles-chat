@@ -174,7 +174,7 @@ class Talk:
 
     def _install_guard(self):
         role = self.role
-        all_read = self._has("msg:all", "read")
+        all_read = (role == "me") or self._has("msg:all", "read")   # 本人(me)看全部含私信
         # 按身份建 TEMP 视图：这条 SQL 就是"谁能看见什么"的唯一出处
         cond = "from_role = %s OR kind = 'default' OR kind = 'broadcast' OR (kind = 'private' AND to_role = %s)" % (
             self._q(role), self._q(role))
