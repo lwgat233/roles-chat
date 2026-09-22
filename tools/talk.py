@@ -1138,6 +1138,43 @@ class Talk:
             self.conn.commit()
         return len(rows), tgt, text
 
+    def watchdog_notify(self, msg_id):
+        """看门狗（需放行的东西）一律报女仆，由女仆转告本人；女仆不授权。同一条只报一次。"""
+        key = "watchdog_notified:%s" % msg_id
+        try:
+            if self.conn.execute("SELECT 1 FROM pref WHERE k=?", (key,)).fetchone():
+                return {"ok": True, "already": True}
+        except Exception:
+            pass
+        try:
+            row = self.conn.execute("SELECT body, scope, from_role FROM v_msg WHERE id=?", (msg_id,)).fetchone()
+        except Exception:
+            row = None
+        scope = (row[1] if row else "?")
+        body = ((row[0] if row else "") or "").replace("\n", " ")[:60]
+        who = (row[2] if row else "?")
+        txt = "看门狗：#%s 一条「%s」要你放行（%s 发的）：%s" % (msg_id, scope, who, body)
+        try:
+            r = self.tell_user("批准", txt, "放行 / 跳过", frm="home.maid", topic="看门狗")
+        except Exception as e:
+            return {"ok": False, "why": str(e)}
+        try:
+            self.conn.execute("INSERT OR REPLACE INTO pref (k, v) VALUES (?, ?)", (key, now_ts()))
+            self.conn.commit()
+        except Exception:
+            pass
+        return {"ok": True, "to": "home.maid", "msg_id": msg_id, "tell": r}
+
+    def wake_purge(self, keep_pending=True):
+        """清理看门狗堆下来的旧记录（默认留着还没放行的 pending）。"""
+        if keep_pending:
+            n = self.conn.execute("DELETE FROM wake WHERE state<>'pending'").rowcount
+        else:
+            n = self.conn.execute("DELETE FROM wake").rowcount
+        self.conn.commit()
+        left = self.conn.execute("SELECT COUNT(*) FROM wake").fetchone()[0]
+        return {"purged": n, "left": left, "kept_pending": keep_pending}
+
     def watch(self, poll=1.0, once=False, since=None):
         """实时跟随：新消息一出现就打印（他本人＝带 🔒 的私信也看得到；带 --role 就是那个角色有权看的）
         公开频道刷新 / pocket 的频道面板就跑这一条。游标按 **id** 走（时间戳是秒级的，会重复刷同一条）。"""
@@ -1257,12 +1294,13 @@ class Talk:
                     if cur and cur[0] == "approved":
                         continue          # @点名/私信已经让它动了，别再改回候选
                     self._wake_set(msg_id, full, "pending", None, None)
+                    self.watchdog_notify(msg_id)   # 看门狗：需放行的，一律报女仆转本人
                     n += 1
             else:
                 for full, scene in self.conn.execute("SELECT full_name,scene FROM role").fetchall():
-                    if full == "owner.me":
-                        continue
-                    self._wake_set(msg_id, full, "pending", None, None)
+                         self._wake_set(msg_id, full, "pending", None, None)
+                    self.watchdog_notify(msg_id)   # 看门狗：需放行的，一律报女仆转本人
+                   self._wake_set(msg_id, full, "pending", None, None)
                     n += 1
 
     def _wake_set(self, msg_id, role, state, by_role, why):
@@ -1271,6 +1309,10 @@ class Talk:
                           " WHERE msg_id=? AND role=?),NULL))",
                           (msg_id, role, state, by_role, why, now_ts(), msg_id, role))
         self.conn.commit()
+
+    if state == "pending":
+
+        self.watchdog_notify(msg_id)   # 看门狗：需放行的，一律报女仆转本人
 
     def wake_list(self, msg_id=None):
         q = ("SELECT w.msg_id,w.role,w.state,w.by_role,w.why,m.topic,m.kind FROM wake w"
@@ -1361,7 +1403,7 @@ def main():
                                     "stage-add", "gate", "gate-open", "gate-done", "report", "blocked",
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
-                                    "reg", "wake", "wake-ok", "wake-skip", "wake-run",
+                                    "reg", "wake", "wake-ok", "wake-skip", "wake-run", "wake-purge",
                                     "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
@@ -1559,6 +1601,8 @@ def main():
         print(t.wake_ok(a.id, a.role, a.by or "owner.me"), "→", a.role)
     elif a.cmd == "wake-skip":
         print(t.wake_skip(a.id, a.role, a.by or "owner.me", a.why), "→", a.role)
+    elif a.cmd == "wake-purge":
+        print(json.dumps(t.wake_purge(keep_pending=not a.hard), ensure_ascii=False))
     elif a.cmd == "wake-run":
         for role, res in t.wake_run(a.id, a.dry):
             print("%-24s %s" % (role, res))
