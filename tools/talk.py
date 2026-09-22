@@ -92,7 +92,8 @@ class Talk:
         self.conn = sqlite3.connect(path)
         self.conn.executescript(SCHEMA)
         # 老库补列（CREATE TABLE IF NOT EXISTS 不会加列）：角色标签、消息的广播范围
-        for sql in ("ALTER TABLE role ADD COLUMN tags TEXT",
+        for sql in ("ALTER TABLE notify ADD COLUMN answered_at INTEGER",
+                   "ALTER TABLE role ADD COLUMN tags TEXT",
                     "ALTER TABLE msg ADD COLUMN scope TEXT"):
             try:
                 self.conn.execute(sql)
@@ -564,9 +565,17 @@ class Talk:
             raise ValueError("没有这条提问：%s" % ask_id)
         to_role, topic = r[0], r[1]
         mid = self.send(by_role, to_role, "private", "答复:" + (topic or ""), text)
-        self.conn.execute("UPDATE notify SET pushed_at=COALESCE(pushed_at,? ) WHERE msg_id=?", (now_ts(), ask_id))
+        self.conn.execute("UPDATE notify SET answered_at=? WHERE msg_id=?", (now_ts(), ask_id))
         self.conn.commit()
         return mid
+
+    def asks_json(self):
+        """还没答的授权/拍板请求 —— 面板上"谁在等你"就靠它"""
+        rows = self.conn.execute(
+            "SELECT n.msg_id,m.from_role,m.topic,m.body,m.created_at FROM notify n"
+            " JOIN v_msg m ON m.id=n.msg_id WHERE n.answered_at IS NULL ORDER BY n.msg_id").fetchall()
+        return {"count": len(rows), "asks": [
+            {"id": r[0], "from": r[1], "topic": r[2], "body": r[3], "at": r[4]} for r in rows]}
 
     def setting_get(self, k, default=None):
         r = self.conn.execute("SELECT v FROM setting WHERE k=?", (k,)).fetchone()
@@ -835,7 +844,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -958,6 +967,8 @@ def main():
     elif a.cmd == "ask":
         mid = t.ask(a.frm or a.role, a.text or a.body, "", a.topic or "要你授权")
         print("#%d 已登记提问 → 女仆会带着「哪个角色 / 哪个会话」转达给他" % mid)
+    elif a.cmd == "asks":
+        print(json.dumps(t.asks_json(), ensure_ascii=False))
     elif a.cmd == "answer":
         mid = t.answer(a.id, a.text or a.body, a.by or "owner.me")
         print("#%d 已记入你的答复并回给提问的人" % mid)
