@@ -1139,23 +1139,24 @@ class Talk:
         return len(rows), tgt, text
 
     def watchdog_notify(self, msg_id):
-        """看门狗（需放行的东西）一律报女仆，由女仆转告本人；女仆不授权。同一条只报一次。"""
+        """看门狗（需放行的事）一律报女仆，由女仆转告本人；同一条只报一次；女仆不授权。"""
         key = "watchdog_notified:%s" % msg_id
         try:
             if self.conn.execute("SELECT 1 FROM pref WHERE k=?", (key,)).fetchone():
                 return {"ok": True, "already": True}
         except Exception:
             pass
+        row = None
         try:
             row = self.conn.execute("SELECT body, scope, from_role FROM v_msg WHERE id=?", (msg_id,)).fetchone()
         except Exception:
-            row = None
+            pass
         scope = (row[1] if row else "?")
         body = ((row[0] if row else "") or "").replace("\n", " ")[:60]
         who = (row[2] if row else "?")
-        txt = "看门狗：#%s 一条「%s」要你放行（%s 发的）：%s" % (msg_id, scope, who, body)
         try:
-            r = self.tell_user("批准", txt, "放行 / 跳过", frm="home.maid", topic="看门狗")
+            r = self.tell_user("批准", "看门狗：#%s 一条「%s」要你放行（%s 发的）：%s" % (msg_id, scope, who, body),
+                               "放行 / 跳过", frm="home.maid", topic="看门狗")
         except Exception as e:
             return {"ok": False, "why": str(e)}
         try:
@@ -1167,13 +1168,9 @@ class Talk:
 
     def wake_purge(self, keep_pending=True):
         """清理看门狗堆下来的旧记录（默认留着还没放行的 pending）。"""
-        if keep_pending:
-            n = self.conn.execute("DELETE FROM wake WHERE state<>'pending'").rowcount
-        else:
-            n = self.conn.execute("DELETE FROM wake").rowcount
+        n = self.conn.execute("DELETE FROM wake WHERE state<>'pending'" if keep_pending else "DELETE FROM wake").rowcount
         self.conn.commit()
-        left = self.conn.execute("SELECT COUNT(*) FROM wake").fetchone()[0]
-        return {"purged": n, "left": left, "kept_pending": keep_pending}
+        return {"purged": n, "left": self.conn.execute("SELECT COUNT(*) FROM wake").fetchone()[0], "kept_pending": keep_pending}
 
     def watch(self, poll=1.0, once=False, since=None):
         """实时跟随：新消息一出现就打印（他本人＝带 🔒 的私信也看得到；带 --role 就是那个角色有权看的）
@@ -1294,13 +1291,14 @@ class Talk:
                     if cur and cur[0] == "approved":
                         continue          # @点名/私信已经让它动了，别再改回候选
                     self._wake_set(msg_id, full, "pending", None, None)
-                    self.watchdog_notify(msg_id)   # 看门狗：需放行的，一律报女仆转本人
+                    self.watchdog_notify(msg_id)   # 看门狗：需放行的，报女仆转本人
                     n += 1
             else:
                 for full, scene in self.conn.execute("SELECT full_name,scene FROM role").fetchall():
-                         self._wake_set(msg_id, full, "pending", None, None)
-                    self.watchdog_notify(msg_id)   # 看门狗：需放行的，一律报女仆转本人
-                   self._wake_set(msg_id, full, "pending", None, None)
+                    if full == "owner.me":
+                        continue
+                    self._wake_set(msg_id, full, "pending", None, None)
+                    self.watchdog_notify(msg_id)   # 看门狗：需放行的，报女仆转本人
                     n += 1
 
     def _wake_set(self, msg_id, role, state, by_role, why):
@@ -1309,10 +1307,6 @@ class Talk:
                           " WHERE msg_id=? AND role=?),NULL))",
                           (msg_id, role, state, by_role, why, now_ts(), msg_id, role))
         self.conn.commit()
-
-    if state == "pending":
-
-        self.watchdog_notify(msg_id)   # 看门狗：需放行的，一律报女仆转本人
 
     def wake_list(self, msg_id=None):
         q = ("SELECT w.msg_id,w.role,w.state,w.by_role,w.why,m.topic,m.kind FROM wake w"
