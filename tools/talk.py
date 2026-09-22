@@ -729,7 +729,7 @@ class Talk:
             if not rows:      # 接入表空 → 退回"全部角色"
                 rows = [r[0] for r in self.conn.execute(
                     "SELECT full_name FROM role WHERE full_name NOT IN ('owner.me','me') ORDER BY full_name").fetchall()]
-            label = "【频道广播】来自 %s #%d" % (frm, mid)
+            label = self._label_tag("broadcast", frm, mid)
             out = []
             for who in rows:
                 text = "%s\n%s\n\n（回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\"）" % (
@@ -745,7 +745,7 @@ class Talk:
             return {"id": mid, "broadcast": True, "count": len(out), "results": out}
 
         mid = self.send(frm, role, kind, topic, body)
-        label = ("【频道广播】" if kind == "broadcast" else "【私聊】") + "来自 %s #%d" % (frm, mid)
+        label = self._label_tag(kind, frm, mid)
         text = "%s\n%s\n\n（回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\"）" % (
             label, body, mid, role)
         try:
@@ -888,8 +888,7 @@ class Talk:
         return rows
 
     def relay_label(self, kind, frm, mid):
-        tag = {"private": "【私聊】", "default": "【定向·他人可见】", "broadcast": "【频道广播】"}.get(kind, "【消息】")
-        return "%s来自 %s #%d" % (tag, frm, mid)
+        return self._label_tag(kind, frm, mid)
 
     def extract_answer(self, screen):
         """从角色的终端屏幕里抠出他最近一次回答（Hermes 的回答画在 ╭─ ☤ Hermes ─╮ 框里）"""
@@ -1138,6 +1137,16 @@ class Talk:
             self.conn.commit()
         return len(rows), tgt, text
 
+    def _label_tag(self, kind, frm, mid):
+        """消息来源标签：看门狗的东西和聊天发的东西必须一眼分得开。"""
+        base = {"private": "【聊天·私聊】", "default": "【聊天·定向·他人可见】", "broadcast": "【聊天·广播】"}.get(kind, "【聊天·消息】")
+        try:
+            if self.conn.execute("SELECT 1 FROM wake WHERE msg_id=? AND state='pending' LIMIT 1", (mid,)).fetchone():
+                base = "【看门狗·待放行】"
+        except Exception:
+            pass
+        return "%s来自 %s #%d" % (base, frm, mid)
+
     def watchdog_notify(self, msg_id):
         """看门狗（需放行的事）一律报女仆，由女仆转告本人；同一条只报一次；女仆不授权。"""
         key = "watchdog_notified:%s" % msg_id
@@ -1147,13 +1156,18 @@ class Talk:
         except Exception:
             pass
         row = None
+        scope, body, who = "?", "", "?"
         try:
-            row = self.conn.execute("SELECT body, scope, from_role FROM v_msg WHERE id=?", (msg_id,)).fetchone()
-        except Exception:
-            pass
-        scope = (row[1] if row else "?")
-        body = ((row[0] if row else "") or "").replace("\n", " ")[:60]
-        who = (row[2] if row else "?")
+            cur = self.conn.execute("SELECT * FROM v_msg WHERE id=?", (msg_id,))
+            names = [d[0] for d in cur.description]
+            r0 = cur.fetchone()
+            if r0:
+                rw = dict(zip(names, r0))
+                scope = rw.get("scope") or rw.get("kind") or "?"
+                who = rw.get("from_role") or "?"
+                body = (rw.get("body") or "").replace("\n", " ")[:60]
+        except Exception as e:
+            body = "（取不到原文：%s）" % e
         try:
             r = self.tell_user("批准", "看门狗：#%s 一条「%s」要你放行（%s 发的）：%s" % (msg_id, scope, who, body),
                                "放行 / 跳过", frm="home.maid", topic="看门狗")
