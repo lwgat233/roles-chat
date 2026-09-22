@@ -569,6 +569,24 @@ class Talk:
         self.conn.commit()
         return mid
 
+    def role_del(self, full, by_role="owner.me", force=False):
+        """删角色（经理）：role + 权限 + 接入表一起清。owner.me 不许删；会话还在跑要先停或 --force。"""
+        if not self._can_control():
+            raise PermissionError("只有经理能删角色：%s" % by_role)
+        if full == "owner.me":
+            raise PermissionError("owner.me 是经理本人，不能删")
+        if not self.conn.execute("SELECT 1 FROM role WHERE full_name=?", (full,)).fetchone():
+            raise ValueError("没有这个角色：%s" % full)
+        if self._alive(self.tmux_session(full)) and not force:
+            raise PermissionError("他的会话还在跑（tmux %s）：先停了他，或加 --force" % self.tmux_session(full))
+        perms = self.conn.execute("SELECT COUNT(*) FROM perm WHERE full_name=?", (full,)).fetchone()[0]
+        mems = self.conn.execute("SELECT COUNT(*) FROM member WHERE role=?", (full,)).fetchone()[0]
+        self.conn.execute("DELETE FROM role WHERE full_name=?", (full,))
+        self.conn.execute("DELETE FROM perm WHERE full_name=?", (full,))
+        self.conn.execute("DELETE FROM member WHERE role=?", (full,))
+        self.conn.commit()
+        return {"deleted": full, "perms_removed": perms, "members_removed": mems}
+
     def role_edit(self, full, title=None, tags=None, scene=None, name=None, by_role="owner.me"):
         """改角色信息（经理）。改场景/角色名 = 改"身份证"：role 表与 perm 一起搬。"""
         if not self._can_control():
@@ -864,7 +882,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -905,7 +923,10 @@ def main():
     # 控制类命令要**以"下令的人"的身份连库**（--by，默认 owner.me），
     # 不能拿 --role（那是被管的对象/阶段归属）去连 —— 否则会被自己的权限检查拦下（踩过两次）
     if a.cmd in ("pause", "start", "stage-add", "gate-open", "gate-done",
-                 "member-add", "member-del", "wake-ok", "wake-skip"):
+                 "member-add", "member-del", "wake-ok", "wake-skip",
+                 # 治理类（改名册/权限/角色）也必须以下令者身份连库 ——
+                 # 否则会拿"无角色的连接"连（= 管理员），权限检查形同虚设（踩过：非经理删掉了角色）
+                 "role-add", "perm-add", "role-edit", "role-del"):
         t = Talk(a.by or "owner.me")
     elif a.cmd == "report":
         t = Talk(a.frm or a.role)          # 报告是"角色自己"交的活
@@ -992,6 +1013,9 @@ def main():
     elif a.cmd == "role-edit":
         r = t.role_edit(a.full, a.title, a.tags, a.scene, a.name, a.by or "owner.me")
         print("已改：%s → %s  描述=%s 标签=%s" % (r["was"], r["full"], r["title"] or "-", r["tags"] or "-"))
+    elif a.cmd == "role-del":
+        r = t.role_del(a.full, a.by or "owner.me", a.force)
+        print("已删 %s（连带清掉 %d 条权限、%d 条接入）" % (r["deleted"], r["perms_removed"], r["members_removed"]))
     elif a.cmd == "asks":
         print(json.dumps(t.asks_json(), ensure_ascii=False))
     elif a.cmd == "answer":
