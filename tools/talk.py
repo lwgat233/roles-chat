@@ -742,7 +742,7 @@ class Talk:
                     " ORDER BY id DESC LIMIT 1", (full, full)).fetchone()
                 mid = last[0] if last else 0
                 try:
-                    self.conn.execute("INSERT INTO reply(msg_id,by_role,body,created_at) VALUES(?,?,?,?)",
+                    self.conn.execute("INSERT INTO reply(msg_id,from_role,body,created_at) VALUES(?,?,?,?)",
                                       (mid, full, ans, now_ts()))
                     collected.append({"role": full, "reply_to": mid})
                 except Exception:
@@ -820,7 +820,7 @@ class Talk:
             out.append({"id": mid, "who": "me" if fr == "owner.me" else "him", "body": body, "at": ts or 0})
         try:
             for mid, by, body, ts in self.conn.execute(
-                    "SELECT msg_id,by_role,body,created_at FROM reply WHERE by_role=? ORDER BY created_at", (role,)).fetchall():
+                    "SELECT msg_id,from_role,body,created_at FROM reply WHERE from_role=? ORDER BY created_at", (role,)).fetchall():
                 out.append({"id": mid, "who": "him", "body": body, "at": ts or 0})
         except Exception:
             pass
