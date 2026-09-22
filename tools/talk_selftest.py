@@ -162,7 +162,13 @@ def run():
         for r in admin.conn.execute("SELECT id FROM msg WHERE feature LIKE ? OR (topic='阶段' AND body LIKE ?)",
                                     (WORD + "%", "%" + WORD + "%")).fetchall():
             admin.conn.execute("DELETE FROM reply WHERE msg_id=?", (r[0],))
+            admin.conn.execute("DELETE FROM wake WHERE msg_id=?", (r[0],))
             admin.conn.execute("DELETE FROM msg WHERE id=?", (r[0],))
+        # wake 是"发消息时系统自己写的"，按 WORD 直接清一遍（不靠 msg 关联）
+        admin.conn.execute("DELETE FROM wake WHERE role LIKE ? OR msg_id IN"
+                           " (SELECT id FROM msg WHERE topic LIKE ? OR body LIKE ?)",
+                           ("%", "%" + WORD + "%", "%" + WORD + "%"))
+        admin.conn.execute("DELETE FROM wake WHERE msg_id NOT IN (SELECT id FROM msg)")
         admin.conn.commit()
         left = admin.conn.execute("SELECT COUNT(*) FROM msg WHERE topic LIKE ? OR body LIKE ?",
                                   ("%" + WORD + "%", "%" + WORD + "%")).fetchone()[0]
