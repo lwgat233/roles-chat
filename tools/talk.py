@@ -1029,10 +1029,13 @@ class Talk:
         sent = []
         rows = self.conn.execute(
             # 投递候选：① me/owner.me/home.maid 发的（经理与女仆说的，所有收件人都要送）
-            #           ② **任何发给经理本人的**（角色交报告/回话时给我发的私信——原来这类一条都不投，
+            #           ② **任何发给经理本人的**（角色回话时给我发的私信——原来这类一条都不投，
             #              于是「他报告交完了、经理不知道」：门铃不响，最长干等了 8 小时）
+            #           ③ **交付报告**（topic 报告 <项目#步>，kind=default 没有收件人）——
+            #              报告是给经理判阶段用的，必须叫醒经理，不能只躺在看板上
             "SELECT id,kind,from_role,to_role,scope,body FROM v_msg WHERE id>?"
-            " AND (from_role IN ('me','owner.me','home.maid') OR to_role IN ('owner.me','me'))"
+            " AND (from_role IN ('me','owner.me','home.maid') OR to_role IN ('owner.me','me')"
+            "      OR topic LIKE '报告%')"
             " ORDER BY id", (cur,)).fetchall()
         for mid, kind, frm, to_role, scope, body in rows:
             if not deliver:
