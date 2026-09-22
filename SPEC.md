@@ -87,6 +87,10 @@ roles-chat/
 | `status` | 经理/他 | 谁在跑、谁被停、谁欠回复、房间状态 |
 | `stage-add/gate/gate-open/gate-done --project --seq [--name] [--role] --by` | 经理 | 阶段闸门：只放行当前步；判定完成必须先有合格报告 |
 | `report --project --seq --from --text` | 角色 | 按固定格式交活（缺字段直接拒） |
+| `roles-json` | 面板 | **角色列表（按场景分组）**：全名 / 名称 / 描述(title) / 状态(在跑·被停) / 有没有会话 / 欠多少回复 |
+| `sessions-json` | 面板 | **历史记录**：他最近用过的会话（角色会话 + 单独会话），带 `alive`，点一下跳回去 |
+| `solo [--name] [--launch]` | 他 | 开/续**脱离角色体系**的单独会话（只对他负责：不参与角色对话、不写 talk 日志、没有角色身份） |
+| `attach [--tmux\|--role]` | 他 | 给出"怎么接进去看"的命令（`tmux attach -t …`） |
 | `blocked --role` | 任何人 | 这个角色现在能不能收活 |
 | `selftest` | 任何人 | 31 条判据 → `evidence/` |
 

@@ -16,6 +16,7 @@ talk.py —— 多角色对话：文本为权威 + SQLite 索引 + 角色权限�
 用法见 README.md；自检：python3 tools/talk.py selftest
 """
 import argparse
+import json
 import os
 import re
 import sqlite3
@@ -50,6 +51,10 @@ CREATE TABLE IF NOT EXISTS room(
 CREATE TABLE IF NOT EXISTS stage(
   project TEXT, seq INTEGER, name TEXT, role TEXT, state TEXT, updated_at INTEGER,
   PRIMARY KEY(project, seq));
+-- 会话台账：角色会话 + "只对我负责"的单独会话（面板的"历史记录"就查它）
+CREATE TABLE IF NOT EXISTS session(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, name TEXT, role TEXT, tmux TEXT, hermes TEXT,
+  created_at INTEGER, last_used INTEGER, note TEXT);
 """
 
 
@@ -283,6 +288,60 @@ class Talk:
     def tmux_session(role):
         return "role-" + role.replace(".", "-")
 
+    # ---------- 面板要的料：角色（按场景分组）+ 会话历史 + "只对我负责"的单独会话 ----------
+
+    def _remember(self, kind, name, role, tmux, hermes, note=""):
+        r = self.conn.execute("SELECT id FROM session WHERE tmux=?", (tmux,)).fetchone()
+        if r:
+            self.conn.execute("UPDATE session SET last_used=? WHERE id=?", (now_ts(), r[0]))
+        else:
+            self.conn.execute(
+                "INSERT INTO session(kind,name,role,tmux,hermes,created_at,last_used,note)"
+                " VALUES(?,?,?,?,?,?,?,?)", (kind, name, role, tmux, hermes, now_ts(), now_ts(), note))
+        self.conn.commit()
+
+    @staticmethod
+    def _alive(tmux):
+        return subprocess.run(["tmux", "has-session", "-t", tmux], capture_output=True).returncode == 0
+
+    def roles_json(self):
+        """面板的角色列表：**按场景分组**，每个角色带 名称/描述(title)/状态/有没有会话/欠多少回复"""
+        scenes = {}
+        for full, scene, name, title in self.conn.execute(
+                "SELECT full_name,scene,name,title FROM role ORDER BY scene, full_name"):
+            scenes.setdefault(scene, []).append({
+                "full_name": full, "name": name, "title": title or "",
+                "state": self.state_of("role:" + full),
+                "session": self._alive(self.tmux_session(full)),
+                "pending": len(self.inbox(full)) if self.role is None else 0,
+            })
+        return {"scenes": [{"scene": s, "roles": v} for s, v in sorted(scenes.items())]}
+
+    def sessions_json(self, limit=20):
+        """历史记录：他最近用过的会话（角色会话 + 单独会话），点一下就能跳回去"""
+        out = []
+        for r in self.conn.execute(
+                "SELECT id,kind,name,role,tmux,hermes,created_at,last_used,note FROM session"
+                " ORDER BY last_used DESC LIMIT ?", (limit,)).fetchall():
+            out.append({"id": r[0], "kind": r[1], "name": r[2], "role": r[3], "tmux": r[4],
+                        "hermes": r[5], "created_at": r[6], "last_used": r[7], "note": r[8] or "",
+                        "alive": self._alive(r[4]) if r[4] else False})
+        return {"sessions": out}
+
+    def solo(self, name=None, launch=None):
+        """**抛离角色体系**的单独会话：只对"我"负责，不参与角色对话、不写 talk 日志、没有角色身份。
+        （面板上那个"开一个新对话"的入口就是它）"""
+        name = name or ("solo%d" % now_ts())
+        tmux = "solo-" + name
+        hermes = "solo-" + name
+        created = False
+        if not self._alive(tmux):
+            run = launch or ("hermes chat -c %s --create-if-missing" % hermes)
+            subprocess.run(["tmux", "new-session", "-d", "-s", tmux, "-x", "120", "-y", "40", run], check=True)
+            created = True
+        self._remember("solo", name, None, tmux, hermes, "只对我负责（不属于任何角色）")
+        return tmux, created
+
     def spawn(self, role, profile=None, launch=None):
         """给角色开一个 tmux 会话（**幂等**：已经在跑就不动它）；会话名固定 = role-<场景>-<角色>"""
         sess = self.tmux_session(role)
@@ -292,6 +351,7 @@ class Talk:
         run = launch or ("hermes %s chat -c %s --create-if-missing" % (
             ("-p " + profile) if profile else "", role))
         subprocess.run(["tmux", "new-session", "-d", "-s", sess, "-x", "120", "-y", "40", run], check=True)
+        self._remember("role", role, role, sess, role, "角色会话（固定，幂等）")
         return sess, True
 
     # ---------- 项目阶段（经理闸门）：只放行当前阶段，后面的人收不到活 ----------
@@ -512,7 +572,10 @@ def main():
                                     "files", "selftest", "roles", "board", "tail", "spawn", "deliver",
                                     "capture", "seen", "init-owner", "pause", "start", "status",
                                     "stage-add", "gate", "gate-open", "gate-done", "report", "blocked",
-                                    "watch", "init", "rebuild"])
+                                    "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
+                                    "attach"]) 
+    ap.add_argument("--launch", default=None)
+    ap.add_argument("--tmux", default=None)
     ap.add_argument("--poll", type=float, default=1.0)
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--by", default=None)
@@ -621,6 +684,21 @@ def main():
     elif a.cmd == "rebuild":
         n, r = t.rebuild()
         print("从 talk/*.md 重建完成：消息 %d 条、回复 %d 条" % (n, r))
+    elif a.cmd == "roles-json":
+        print(json.dumps(t.roles_json(), ensure_ascii=False))
+    elif a.cmd == "sessions-json":
+        print(json.dumps(t.sessions_json(), ensure_ascii=False))
+    elif a.cmd == "solo":
+        tmux, created = t.solo(a.name, a.launch)
+        print(json.dumps({"tmux": tmux, "created": created, "role": None,
+                          "hint": "tmux attach -t %s" % tmux}, ensure_ascii=False))
+    elif a.cmd == "attach":
+        target = a.tmux or (a.role and t.tmux_session(a.role)) or None
+        if not target:
+            print("要 --tmux <名字> 或 --role <全名>"); return 2
+        if not t._alive(target):
+            print("会话不在：%s（先 spawn/solo）" % target); return 3
+        print("tmux attach -t %s" % target)
     elif a.cmd == "deliver":
         body = a.text or sys.stdin.read()
         if a.id:
