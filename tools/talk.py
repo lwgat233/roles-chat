@@ -389,6 +389,35 @@ class Talk:
             pass          # 老库还没有 bind 列：退回默认，不许因此崩
         return "roles:" + win_name(role)
 
+    MANAGERS = ("owner.me", "home.maid")   # 能给「无角色的 session」发指令的只有这两位
+
+    def role_of_target(self, target):
+        """这个 tmux 目标属于哪个角色？None = 无角色的 session（无人的 session）。"""
+        tgt = str(target or "")
+        r = self.conn.execute("SELECT full_name FROM role WHERE bind=?", (tgt,)).fetchone()
+        if r:
+            return r[0]
+        win = tgt.split(":", 1)[1] if ":" in tgt else tgt
+        r = self.conn.execute("SELECT full_name FROM role WHERE replace(full_name, '.', '-')=?", (win,)).fetchone()
+        return r[0] if r else None
+
+    def can_send_to_session(self, by, target):
+        """能不能给这个 session 发指令：有角色的 session 按常规权限；无角色的只准经理/女仆。"""
+        who = self.role_of_target(target)
+        if who is not None:
+            return True, "这是 %s 的会话" % who
+        if (by or "") in self.MANAGERS:
+            return True, "无角色的 session：%s 是经理/女仆，可以发" % by
+        return False, "这个会话没有角色（%s）：只有经理或女仆能给它发指令，%s 无权" % (target, by)
+
+    def send_to_session(self, target, text, by=None):
+        """给一个 session 发指令（无角色的要过权限关）。"""
+        by = by or self.by_role or "owner.me"
+        ok, why = self.can_send_to_session(by, target)
+        if not ok:
+            raise PermissionError(why)
+        return {"sent": True, "to": target, "by": by, "role": self.role_of_target(target), "why": why}
+
     def role_bind(self, role, target):
         """把角色绑到一个已存在的 session 上（改了它就固定用这个回答）。"""
         r = self.conn.execute("SELECT full_name FROM role WHERE full_name=?", (role,)).fetchone()
@@ -1317,7 +1346,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "bind", "unbind", "hermes-sessions"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--session", default=None, help="要绑的会话（roles:home-maid 或 hermes）")
@@ -1363,7 +1392,7 @@ def main():
                  # 治理类（改名册/权限/角色）也必须以下令者身份连库 ——
                  # 否则会拿"无角色的连接"连（= 管理员），权限检查形同虚设（踩过：非经理删掉了角色）
                  "role-add", "perm-add", "role-edit", "role-del",
-                 "say", "bind", "unbind"):
+                 "say", "bind", "unbind", "session-say"):
         t = Talk(a.by or "owner.me")
     elif a.cmd == "report":
         t = Talk(a.frm or a.role)          # 报告是"角色自己"交的活
@@ -1472,6 +1501,8 @@ def main():
         print(json.dumps({"built": built, "doctor": d}, ensure_ascii=False))
     elif a.cmd == "hermes-sessions":
         print(json.dumps(t.hermes_sessions(), ensure_ascii=False))
+    elif a.cmd == "session-say":
+        print(json.dumps(t.send_to_session(a.session or a.tmux, a.text or "", a.by), ensure_ascii=False))
     elif a.cmd == "bind":
         r = t.role_bind(a.role, a.session)
         print(json.dumps(r, ensure_ascii=False))

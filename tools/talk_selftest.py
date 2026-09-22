@@ -110,6 +110,15 @@ def run():
         check("私信写在 private-author__tester 文件里", have(priv), os.path.basename(priv))
         check("broadcast 文件里没有私信正文", os.path.exists(bcast) and "private 消息" not in open(bcast, encoding="utf-8").read())
         _rvis = [f for f in r.visible_files("pipeline.renderer") if "-private-" in f]
+        # --- 无角色的 session：只有经理/女仆能发指令 ---
+        check("无角色 session 判定", admin.role_of_target("hermes") is None, admin.role_of_target("hermes"))
+        check("经理能给无角色 session 发", admin.can_send_to_session("owner.me", "hermes")[0], admin.can_send_to_session("owner.me", "hermes"))
+        check("女仆能给无角色 session 发", admin.can_send_to_session("home.maid", "hermes")[0], admin.can_send_to_session("home.maid", "hermes"))
+        _deny = admin.can_send_to_session("pipeline.renderer", "hermes")
+        check("其他人给无角色 session 发要拒", (not _deny[0]) and "无权" in _deny[1], _deny[1])
+        check("有角色的 session 不受此限", admin.can_send_to_session("pipeline.renderer", "roles:home-maid")[0],
+              admin.can_send_to_session("pipeline.renderer", "roles:home-maid"))
+
         # --- 角色 ↔ session 绑定：绑了就用绑的，没绑就用默认窗口 ---
         _fn = "pipeline.tester"
         check("没绑时用默认窗口", r.tmux_session(_fn) == "roles:pipeline-tester", r.tmux_session(_fn))
