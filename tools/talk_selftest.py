@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""talk.py 的自检：证明"三类消息 + SQLite 层面的角色权限"真的成立，跑完自清并落 evidence。"""
+import os
+import sqlite3
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import talk  # noqa: E402
+
+ROOT = talk.ROOT
+EVID = os.path.join(ROOT, "evidence")
+WORD = "selftest%d" % int(time.time())
+RESULTS = []
+
+
+def check(name, ok, got=""):
+    RESULTS.append((name, bool(ok), got))
+    print(("OK   " if ok else "FAIL ") + name + (" | " + str(got) if got != "" else ""))
+
+
+def run():
+    os.makedirs(EVID, exist_ok=True)
+    admin = talk.Talk(None)
+    ids = []
+    files = []
+    try:
+        # --- 角色名册 ---
+        for full, title in [("pipeline.author", "功能创造者"), ("pipeline.tester", "测试者"),
+                            ("pipeline.renderer", "渲染者"), ("pipeline.auditor", "审计者")]:
+            admin.conn.execute("INSERT OR REPLACE INTO role(full_name,scene,name,title,created_at) VALUES(?,?,?,?,?)",
+                               (full, full.split(".")[0], full.split(".")[1], title, talk.now_ts()))
+        admin.conn.commit()
+        n = admin.conn.execute("SELECT COUNT(*) FROM role").fetchone()[0]
+        check("角色名册登记成功（≥4）", n >= 4, n)
+
+        # --- 三类消息 ---
+        a = talk.Talk("pipeline.author")
+        i1 = a.send("pipeline.author", None, "default", "公告-" + WORD, "default 消息：谁都看得见 " + WORD)
+        i2 = a.send("pipeline.author", "全体", "broadcast", "广播-" + WORD,
+                    "broadcast 消息：对全体 " + WORD, must_reply=True)
+        i3 = a.send("pipeline.author", "pipeline.tester", "private", "私信-" + WORD,
+                    "private 消息：只给测试者 " + WORD)
+        ids = [i1, i2, i3]
+        check("三类消息都写进日志了（default/broadcast/private）", len(ids) == 3, ids)
+
+        # --- 收件人看得到 ---
+        t = talk.Talk("pipeline.tester")
+        check("tester 搜到 default", len(t.search(WORD)) >= 1)
+        check("tester 搜到 broadcast", len(t.search("广播-" + WORD)) >= 1)
+        check("tester 搜到 private（它是收件人）", len(t.search("私信-" + WORD)) == 1)
+
+        # --- 第三方看不到私信（这才是关键）---
+        r = talk.Talk("pipeline.renderer")
+        check("renderer 搜到 default（default 不看权限）", len(r.search(WORD)) >= 1)
+        got_priv = len([x for x in r.search(WORD) if x[1] == "private"])
+        check("renderer 搜不到私信（0 条）", got_priv == 0, got_priv)
+
+        # --- 绕过视图直接读表：库拒绝 ---
+        try:
+            r.conn.execute("SELECT * FROM msg").fetchall()
+            check("renderer 直接读 msg 表被库拒绝", False, "竟然读到了")
+        except sqlite3.DatabaseError as e:
+            check("renderer 直接读 msg 表被库拒绝", True, str(e))
+
+        # --- 改名册/权限：非管理员被拒 ---
+        try:
+            r.conn.execute("UPDATE role SET title='x' WHERE full_name='pipeline.renderer'")
+            check("renderer 改名册被库拒绝", False, "竟然改成了")
+        except sqlite3.DatabaseError as e:
+            check("renderer 改名册被库拒绝", True, str(e))
+
+        # --- 审计角色：加一条数据型权限就能看私信 ---
+        admin.conn.execute("INSERT OR REPLACE INTO perm(full_name,scope,action,created_at) VALUES(?,?,?,?)",
+                           ("pipeline.auditor", "msg:all", "read", talk.now_ts()))
+        admin.conn.commit()
+        au = talk.Talk("pipeline.auditor")
+        check("加了 msg:all/read 的审计角色能看到私信", len([x for x in au.search(WORD) if x[1] == "private"]) == 1)
+
+        # --- inbox：等我回的（广播/私信都算）---
+        ti = [x[0] for x in t.inbox("pipeline.tester")]
+        ri = [x[0] for x in r.inbox("pipeline.renderer")]
+        check("tester 收件箱有广播", i2 in ti, ti)
+        check("tester 收件箱有私信", i3 in ti, ti)
+        check("renderer 收件箱有广播（全体）", i2 in ri, ri)
+        check("renderer 收件箱没有别人的私信", i3 not in ri, ri)
+
+        # --- 文本日志：私信只落在专属文件里 ---
+        priv = talk.log_path("private", "pipeline.author", "pipeline.tester")
+        bcast = talk.log_path("broadcast", "pipeline.author", "全体")
+        dflt = talk.log_path("default", "pipeline.author", None)
+        files = [priv, talk.log_path("broadcast", "pipeline.author", "全体"), dflt]
+        have = lambda p: os.path.exists(p) and WORD in open(p, encoding="utf-8").read()
+        check("私信写在 private-author__tester 文件里", have(priv), os.path.basename(priv))
+        check("broadcast 文件里没有私信正文", os.path.exists(bcast) and "private 消息" not in open(bcast, encoding="utf-8").read())
+        check("renderer 能读的文件里没有私信文件", not any("-private-" in f for f in r.visible_files("pipeline.renderer")),
+              r.visible_files("pipeline.renderer")[:3])
+
+        # --- 回复 ---
+        ts = t.reply(i3, "pipeline.tester", "收到，判据已加（" + WORD + "）")
+        check("收件人能回复私信", bool(ts))
+        got = t.conn.execute("SELECT COUNT(*) FROM reply WHERE msg_id=?", (i3,)).fetchone()[0]
+        check("回复也入库了", got == 1, got)
+    finally:
+        # --- 自清（P23 的规矩：验收不许留残件）---
+        for i in ids:
+            admin.conn.execute("DELETE FROM reply WHERE msg_id=?", (i,))
+            admin.conn.execute("DELETE FROM msg WHERE id=?", (i,))
+        admin.conn.execute("DELETE FROM perm WHERE full_name='pipeline.auditor'")
+        admin.conn.execute("DELETE FROM role WHERE full_name='pipeline.auditor'")
+        admin.conn.commit()
+        left = admin.conn.execute("SELECT COUNT(*) FROM msg WHERE topic LIKE ? OR body LIKE ?",
+                                  ("%" + WORD + "%", "%" + WORD + "%")).fetchone()[0]
+        check("收尾：测试消息清掉了", left == 0, left)
+        for p in files:
+            try:
+                if os.path.exists(p) and not open(p, encoding="utf-8").read().replace(WORD, "").strip():
+                    os.remove(p)
+            except Exception:
+                pass
+
+    ok = sum(1 for _, o, _ in RESULTS if o)
+    bad = len(RESULTS) - ok
+    out = os.path.join(EVID, "selftest-%s.txt" % time.strftime("%Y%m%d-%H%M%S"))
+    with open(out, "w", encoding="utf-8") as f:
+        f.write("== roles-chat 自检 %s ==\n" % talk.fmt(talk.now_ts()))
+        for name, o, got in RESULTS:
+            f.write(("OK   " if o else "FAIL ") + name + ((" | " + str(got)) if got != "" else "") + "\n")
+        f.write("---- 合计：OK=%d FAIL=%d\n" % (ok, bad))
+    print("---- 合计：OK=%d FAIL=%d（证据：%s）" % (ok, bad, os.path.relpath(out, ROOT)))
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(run())

@@ -1,0 +1,25 @@
+roles-chat —— 多角色：角色名册 / 经验库 / 可检索对话（含 SQLite 权限）
+================================================================
+
+生成：2026-09-22　　设计书：~/.hermes/skills/roles/设计-角色经验与多角色对话.md
+
+tools/
+  talk.py                对话核心：文本日志（权威）+ SQLite 索引 + 角色权限（授权器 + 按身份建视图）
+  talk_selftest.py       自检 20 条（三类消息 / 私信隔离 / 直读表被拒 / 审计角色 / inbox / 日志隔离 / 收尾自清）
+  exp_index.py           经验库：list / must / search / check
+
+experiences/             经验（目录名 = 角色全名）
+  pipeline.author/guard-scan-all-dex.md              必读：守卫要扫全部 dex
+  pipeline.tester/background-wait-pgrep-selfmatch.md 必读：pgrep -f 自匹配
+  pipeline.renderer/sanitize-whole-segment.md        可选：消毒别按 token 做
+
+talk/                    文本日志（权威源）
+  YYYY-MM-DD-default.md / -broadcast.md / -private-<from>__<to>.md
+talk.db                  SQLite 索引（role / perm / msg / reply / seen）——可重建
+evidence/                自检输出（selftest-*.txt）
+
+规矩：
+  - 经验必须有 name / must / tags / when / verified；must 只允许 true|false
+  - 说身份 → 读角色卡 + 必读经验（must:true）+ 按任务检索可选经验
+  - 消息三类：default（不看权限谁都可见）/ broadcast（全体）/ private（私信）
+  - 权限是数据（perm 表），不是代码分支；绕不过视图（授权器拦直读）
