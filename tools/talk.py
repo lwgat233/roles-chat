@@ -891,11 +891,15 @@ class Talk:
             raise RuntimeError("角色 %s 没有会话（先 spawn）" % role)
         buf = "rc%d" % now_ts()
         if "\n" in text:
-            # 多行：粘贴后隔一下再回车（有的 TUI 会把紧跟粘贴的回车吞掉 → 用户报过"没发送换行符"）
+            # 多行：粘贴后**等久一点**再回车，而且回车**补第二次**兜底。
+            # 2026-09-23 实测：粘贴后 0.25s 紧跟的那一下回车会被 TUI 吞掉 —— 整段文字躺在输入框里没提交，
+            # 会话侧看不到任何提示（经理因此空转 35 分钟）。空输入框再回车是无害的。
             subprocess.run(["tmux", "load-buffer", "-b", buf, "-"], input=text.encode("utf-8"), check=True)
             subprocess.run(["tmux", "paste-buffer", "-b", buf, "-t", sess], check=True)
-            time.sleep(0.25)
+            time.sleep(0.8)
             subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=True)
+            time.sleep(0.6)
+            subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=False)
         else:
             # 单行：直接打字再回车，最稳（不经过粘贴缓冲，TUI 一定能收）
             subprocess.run(["tmux", "send-keys", "-t", sess, "-l", text], check=True)
@@ -2019,7 +2023,7 @@ def main():
         scope = "room" if (target in ("全体", "all", "room", "")) else "role:" + target
         t.set_state(scope, "running", by, a.why)
         detail = ""
-        if scope != "room":
+        if scope != "room" and target != "home.maid":
             sess = t.tmux_session(target)
             if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode != 0:
                 t.spawn(target, a.profile)

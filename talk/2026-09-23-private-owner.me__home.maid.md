@@ -30,3 +30,23 @@
     项目进度：
     hermes-pocket-测试轮：1/3 步完成 · 当前 ◀ 第 2 步 按测试结果修（pipeline.author）
     roles-chat-平台维护：0/2 步完成 · 当前 ◀ 第 1 步 平台修复（owner.me）
+
+[2026-09-23 01:21:26] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #746
+    hermes-pocket-测试轮 第 2 步「按测试结果修」已判定完成。
+    项目进度：
+    hermes-pocket-测试轮：2/4 步完成 · 下一步待放行：第 3 步 渲染出包（pipeline.renderer）
+    roles-chat-平台维护：0/2 步完成 · 当前 ◀ 第 1 步 平台修复（owner.me）
+
+[2026-09-23 01:21:30] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #748
+    角色切换：pipeline.author → pipeline.renderer
+    为什么切：阶段放行：hermes-pocket-测试轮 第 3 步 渲染出包
+    项目进度：
+    hermes-pocket-测试轮：2/4 步完成 · 当前 ◀ 第 3 步 渲染出包（pipeline.renderer）
+    roles-chat-平台维护：0/2 步完成 · 当前 ◀ 第 1 步 平台修复（owner.me）
+
+[2026-09-23 01:22:17] owner.me → home.maid | 全体? 否 | 话题:【告知】决定：按职责分活（出包归渲染者） | 必读:否 | #751
+    经理按本人当场定调写的决定书：docs/决定-2026-09-23-按职责分活.md
+    · 这轮排错的地方：hermes-pocket-测试轮 三步里没有一步是渲染者，出包被并进作者、作者自己出包自己验（自证）。已改：①测试✔ ②按测试结果修✔ ③渲染出包(renderer)进行中 ④复测(tester)。
+    · 作者自出的包只算过程材料；复测对象是渲染者重出的那版，判据由测试者独立复核。
+    · 以后凡界面/出包，阶段归属必须是渲染者；作者自出自测＝分活没排开。
+    · 已收进必读经验：experiences/owner.me/按职责分活-出包归渲染者.md（含判据三条）。

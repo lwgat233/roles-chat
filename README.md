@@ -90,6 +90,21 @@ python3 tools/talk.py nudge --minutes 45 --max 2        # 手动跑一次（加 
   而 target 形如 `roles:home-maid` → **tmux 忽略窗口部分、把整个 roles 会话杀掉**，5 个角色全被 SIGHUP，
   只能按名字重新 `spawn` 恢复（上下文没丢）。已修：目标含 `:` 时用 `kill-window`，只有裸会话名才用 `kill-session`。
 
+## 女仆身份注册（2026-09-23 定：她＝本人 QQ 通道，不是一个 tmux 会话）
+
+要"被系统认出来"，四处都要登记，缺一处面板里她就还是空壳：
+
+| 位置 | 值 |
+|---|---|
+| `role` 行 | `home.maid` / scene `home` / name `maid` / title `可爱女仆（个人助手：管生活，中转要紧的话）` |
+| `session` 行 | `hermes=<这条 QQ 会话的 id>`、`tmux=qqbot:<chat_id>`、`bind` 留空 |
+| Hermes 侧标题 | 这条会话 `title='home.maid'`（`title_source=manual`）；旧的死会话要改名/归档，**否则唯一标题占着、认不出来** |
+| `member` 接入表 | `qqbot` ← `home.maid`（不加这条，`roles-json` 里 `channels` 是空的） |
+| 状态 | `room` 里 `role:home.maid` = `running`（她的"活着"= 这条通道在，不是 tmux 窗口在） |
+
+判据：`talk.py roles-json` 里她必须是 `session=true · online=true · channels=["qqbot"]`。
+改状态/接入表要 `--by owner.me`（女仆自己没控制权，这是对的）。
+
 ## 隐形对接信息（2026-09-23 定：能看出"收没收到"，但本人看不到）
 
 - **一条消息的对接状态**：`talk.py ack --id N` → `#N 对接：投递 2/2 · 已读 1 · 已回 1`
