@@ -185,8 +185,12 @@ class Talk:
 
     # ---------- 权限 ----------
     def _can_manage(self):
-        """管理权：改名册 / 改权限 / 放行阶段 / 暂停恢复（代表"我"的经理角色有，普通角色没有）"""
-        if self.role is None:
+        """管理权：改名册 / 改权限 / 放行阶段 / 暂停恢复。
+        本人(me)=最高权限，经理角色(owner.<我>)代他管流程；普通角色没有。
+        注意：授权器的写规则用的就是这个标志（见 _install_guard）——
+        只认经理、不认本人，会让「本人下令」在高层通过、到写 room 表时被库拒
+        （现象：start/pause 抛 sqlite3.DatabaseError: not authorized，看着像"拉不起来"）。"""
+        if self.role is None or self.role == "me":
             return True
         return self._has("table:role", "write") or self._has("room:control", "write")
 
@@ -1068,13 +1072,21 @@ class Talk:
         return {"full": nfull, "was": full, "scene": nsc, "name": nnm, "title": nti or "", "tags": ntg or ""}
 
     def thread(self, role, limit=100):
-        """一对一聊天记录（面板画气泡用）：who=me 我说的 / him 他说的"""
+        """一对一聊天记录（面板画气泡用）：who=me 我说的 / him 他说的。
+
+        「我说的」= **本人(me) 与 经理(owner.me) 都算**（2026-09-22 修）：
+        面板默认以「本人」身份发言，而这里原来只认 owner.me，
+        现象就是用户在面板里发的消息**不进气泡列表**（只有经理身份发的才显示）。
+        两个身份都是用户这一侧，渠道视图里不能只认一个。
+        """
+        MINE = ("me", "owner.me")
+        ph = ",".join("?" for _ in MINE)
         out = []
         for kind, fr, to, body, ts, mid in self.conn.execute(
                 "SELECT kind,from_role,to_role,body,created_at,id FROM v_msg WHERE"
-                " (from_role='owner.me' AND to_role=?) OR from_role=? ORDER BY id LIMIT ?",
-                (role, role, limit)).fetchall():
-            out.append({"id": mid, "who": "me" if fr == "owner.me" else "him", "body": body, "at": ts or 0})
+                " (from_role IN (%s) AND to_role=?) OR from_role=? ORDER BY id LIMIT ?" % ph,
+                tuple(MINE) + (role, role, limit)).fetchall():
+            out.append({"id": mid, "who": "me" if fr in MINE else "him", "body": body, "at": ts or 0})
         try:
             for mid, by, body, ts in self.conn.execute(
                     "SELECT msg_id,from_role,body,created_at FROM reply WHERE from_role=? ORDER BY created_at", (role,)).fetchall():
@@ -1503,6 +1515,10 @@ def main():
         t.conn.commit()
         print("权限已加：%s %s/%s" % (a.role, a.scope, a.action))
     elif a.cmd == "send":
+        if not a.frm:
+            # 不收口就会生成 from_role 为空的"没人收到的消息"（#649 踩过）——宁可直接拒
+            print("缺 --from：说话的人是谁？（本人 me / 经理 owner.me / 某个角色全名）")
+            return 2
         mid = t.send(a.frm, a.to, a.kind, a.topic, a.body, a.must_reply, scope=a.scope)
         print("#%d 已记入 %s" % (mid, log_path(a.kind, a.frm, a.to)))
     elif a.cmd == "reply":

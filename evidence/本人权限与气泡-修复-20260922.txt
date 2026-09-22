@@ -1,0 +1,19 @@
+== 1) 旧代码以本人身份下令（备份 tools/talk.py，改前）==
+    self.conn.execute("INSERT OR REPLACE INTO room(scope,state,by_role,why,updated_at) VALUES(?,?,?,?,?)",
+sqlite3.DatabaseError: not authorized
+
+== 2) 修后，同一命令（本人 start）==
+已恢复：pipeline.author（会话本来就在 roles:pipeline-author）
+
+== 3) 修后：本人建阶段 / 本人放行 ==
+自检-本人权限                  #1 功能开发           pipeline.author          ◀ 进行中
+
+== 4) 气泡：本人(me)发的话现在进不进 thread ==
+count=16
+  631 me 嗯你现在以我的名义拉起这个。功能创造者，不知道为
+  632 me 你看现在我就发现了一个问题，就是我在这个聊天，对
+  634 me 好的，你先把那个功能什么角色给拉起来，拉不起来和
+
+== 5) 全量自检 ==
+OK   收尾：测试消息清掉了 | 0
+---- 合计：OK=40 FAIL=0（证据：evidence/selftest-20260922-234042.txt）
