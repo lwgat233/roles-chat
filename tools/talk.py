@@ -424,8 +424,8 @@ class Talk:
             subprocess.run(["tmux", "send-keys", "-t", target, "Enter"], check=True, capture_output=True)
         except Exception as e:
             return {"sent": False, "why": "发不进去：%s" % e, "to": target, "by": by}
-        time.sleep(0.6)
-        pane = subprocess.run(["tmux", "capture-pane", "-p", "-t", target, "-S", "-4"], capture_output=True, text=True)
+        time.sleep(1.2)   # 给对端一点时间把输出打出来，不然"证据"里只有提示符
+        pane = subprocess.run(["tmux", "capture-pane", "-p", "-t", target, "-S", "-12"], capture_output=True, text=True)
         tail = [l.strip() for l in (pane.stdout or "").splitlines() if l.strip()][-2:]
         return {"sent": True, "to": target, "by": by, "role": self.role_of_target(target),
                 "why": why, "他屏上的最后两行": tail}
