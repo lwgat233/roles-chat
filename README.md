@@ -47,6 +47,29 @@ python3 tools/talk.py gate-done --project <P> --seq 1 --by owner.me # 判定完�
 - **只有经理（有 `room:control/write`）能放行**；普通角色 `gate-open` 被拒。
 - **判定完成必须先有该阶段的合格报告**，否则：`第 1 步还没有合格报告（先 run report），不放行下一步`。
 - 放行/报告都写进对话（`话题:阶段` / `话题:报告 <项目#步>`），看板上一眼能看出流程走到哪。
+- **接活先登记阶段（经理的固定动作）**：拿到本人派的活，**先** `stage-add` 把步骤排出来（再 `gate-open` 放行第 1 步），**然后**才往角色投递。
+  没登记阶段的活，切角色通知和逾期追问里都看不到进度（`progress_line()` 会显示"还没有登记项目阶段"）。
+
+## 切角色/放行/完成 → 自动告知本人
+
+经理不用手写汇报，这三处会自己推给本人（QQ，经女仆）：
+- `switch --role X`：角色切换（切到谁 + 为什么 + 项目进度）
+- `gate-open`：放行某步（= 下一个角色接手）
+- `gate-done`：某步判定完成
+
+## 逾期追问（派了活没回音就催）
+
+```bash
+python3 tools/talk.py nudge --minutes 45 --max 2        # 手动跑一次（加 --dry 只看会做什么）
+```
+
+- **判据**：`delivery.ok=1`（投出去了）且那个角色**没有** `reply`，且已过 `--minutes`（默认 45）。
+- 不追：发给经理自己的、纯告知类（`【告知/【已解决/【收工/【进度`）。
+- **不连环催**：`pref['nudge:<msg>:<role>'] = 时间|次数`，阈值内只问一次；最多问 `--max` 次（默认 2）。
+- **升级**：问够次数，**或对方会话不在** → 走女仆报本人「卡住」。
+- **常驻**：由 `roles-relay.service` 每分钟扫一次（`ExecStart` 里带 `--poll 5 --minutes 45 --max 2`）。
+  **改了 `talk.py` 必须重启服务才生效**：`systemctl --user restart roles-relay.service`。
+  unit 必须指向真项目 `/vol1/1000/airesults/roles-chat`（曾经指到过一份 `aicache/tmp/rc-gh` 的副本，导致中转站对着另一个库干活）。
 
 ## 交付报告的固定格式（角色交活必须带这四行）
 
