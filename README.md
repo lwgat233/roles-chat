@@ -24,6 +24,49 @@ evidence/                自检输出
 角色开连接时挂 **SQLite 授权器**：直接读 `msg` 表被拒（`access to msg.id is prohibited`），只能走按身份拼好的
 TEMP 视图 `v_msg`；名册/权限表只有管理员角色能改（`not authorized`）。私信连**文本文件层面**都不进别人的可读清单。
 
+## 经理与阶段闸门（一个项目 = 一串阶段，只放行当前那一步）
+
+```bash
+# 经理排阶段（标在 stage 表里，初始全部 locked）
+python3 tools/talk.py stage-add --project mark-readnotes-第11轮 --seq 1 --name 功能开发 --role pipeline.author
+python3 tools/talk.py stage-add --project mark-readnotes-第11轮 --seq 2 --name 渲染打包 --role pipeline.renderer
+python3 tools/talk.py stage-add --project mark-readnotes-第11轮 --seq 3 --name 测试     --role pipeline.tester
+python3 tools/talk.py gate --project mark-readnotes-第11轮          # 一眼看谁在跑 / 谁锁着
+python3 tools/talk.py gate-open --project <P> --seq 1 --by owner.me # 只放行第 1 步（后面的仍锁）
+python3 tools/talk.py blocked --role pipeline.renderer              # 查某人现在能不能收活
+python3 tools/talk.py gate-done --project <P> --seq 1 --by owner.me # 判定完成（必须先有合格报告）
+```
+
+规矩（全部实测过）：
+- **阶段锁住的人收不到活**：`deliver` 会拒 —— `阶段没放行，不投递：pipeline.renderer（… 第 2 步（渲染打包）还没放行）`。
+- **只有经理（有 `room:control/write`）能放行**；普通角色 `gate-open` 被拒。
+- **判定完成必须先有该阶段的合格报告**，否则：`第 1 步还没有合格报告（先 run report），不放行下一步`。
+- 放行/报告都写进对话（`话题:阶段` / `话题:报告 <项目#步>`），看板上一眼能看出流程走到哪。
+
+## 交付报告的固定格式（角色交活必须带这四行）
+
+```
+做了什么：<一句话>
+证据：<evidence/ 里的路径>
+判据：<跑过什么、多少条绿>
+依赖：<下一步等谁 / 等什么>
+```
+`talk.py report --project <P> --seq N --from <角色> --text "…"`：**缺任何一行直接拒**，
+拒绝信息就是缺哪几项；合格才入库（`feature` 记 `P#N`，阶段完成判定就是看它）。
+
+## 固定会话（幂等，名字按角色）
+
+`talk.py spawn --role <场景>.<角色> [--profile <名>]`：tmux 会话名固定 `role-<场景>-<角色>`；
+**已经在跑就不动它**（幂等）。Hermes 侧用 `hermes -p <profile> chat -c <角色全名> --create-if-missing`
+—— 按名字续同一个会话，没有就用这个名字建，所以"session 固定且按角色命名"是真的。
+
+## 与 hermes-pocket 的对接（下一步，本项目的一部分）
+
+hermes-pocket 是 WebView + 原生 SSH 的移动终端壳，连单个会话是它的强项。要在它上面加：
+1. **频道面板**：复用它已有的 SSH 通道跑 `talk.py board`（看公共频道）与 `talk.py send --kind broadcast`（喊话）；
+2. **单角色入口一排**：点哪个进哪个角色的固定会话（`role-<场景>-<角色>`）。
+它现有的 `.mjs` 测试**不动**（用户交代过）；面板加完在模拟器上按老规矩验收。
+
 ## 管理者（代表"我"的角色：owner.me）
 
 ```bash

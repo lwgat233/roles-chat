@@ -98,6 +98,39 @@ def run():
         check("renderer 能读的文件里没有私信文件", not any("-private-" in f for f in r.visible_files("pipeline.renderer")),
               r.visible_files("pipeline.renderer")[:3])
 
+        # --- 项目阶段（经理闸门）---
+        admin.init_owner()                      # 保证管理者角色在（幂等）
+        boss = talk.Talk("owner.me")
+        for s, nm, rl in [(1, "功能开发", "pipeline.author"), (2, "渲染打包", "pipeline.renderer"),
+                          (3, "测试", "pipeline.tester")]:
+            boss.stage_add(WORD, s, nm, rl)
+        check("阶段初始全部 locked（后面的人收不到活）", boss.blocked_reason("pipeline.tester") is not None)
+        boss.gate_open(WORD, 1, "owner.me")
+        check("放行第 1 步后：第 1 步的人能收活", boss.blocked_reason("pipeline.author") is None)
+        check("放行第 1 步后：第 2 步的人仍被卡", boss.blocked_reason("pipeline.renderer") is not None)
+        try:
+            boss.deliver("pipeline.renderer", "不该送到的活")
+            check("阶段没放行时投递被卡", False, "竟然送进去了")
+        except RuntimeError as e:
+            check("阶段没放行时投递被卡", True, str(e)[:40])
+        try:
+            talk.Talk("pipeline.author").gate_open(WORD, 2, "pipeline.author")
+            check("非经理不能放行阶段", False, "竟然放行了")
+        except PermissionError:
+            check("非经理不能放行阶段", True)
+        try:
+            talk.Talk("pipeline.author").report(WORD, 1, "pipeline.author", "我做完了，就这样")
+            check("报告缺字段被拒", False, "竟然收了")
+        except ValueError as e:
+            check("报告缺字段被拒", True, str(e)[:30])
+        # 报告是"角色自己"交的活 —— 用角色自己的连接（管理者不能替别人发言，这条规矩是对的）
+        talk.Talk("pipeline.author").report(WORD, 1, "pipeline.author",
+                                           "做了什么：x（%s）\n证据：y\n判据：z\n依赖：w" % WORD)
+        check("合格报告入库", True)
+        boss.gate_done(WORD, 1, "owner.me")
+        boss.gate_open(WORD, 2, "owner.me")
+        check("报告合格后才允许放行下一步", boss.blocked_reason("pipeline.renderer") is None)
+
         # --- 回复 ---
         ts = t.reply(i3, "pipeline.tester", "收到，判据已加（" + WORD + "）")
         check("收件人能回复私信", bool(ts))
@@ -110,6 +143,12 @@ def run():
             admin.conn.execute("DELETE FROM msg WHERE id=?", (i,))
         admin.conn.execute("DELETE FROM perm WHERE full_name='pipeline.auditor'")
         admin.conn.execute("DELETE FROM role WHERE full_name='pipeline.auditor'")
+        # 阶段与阶段消息（放行/报告）一并清掉，别留残件
+        admin.conn.execute("DELETE FROM stage WHERE project=?", (WORD,))
+        for r in admin.conn.execute("SELECT id FROM msg WHERE feature LIKE ? OR (topic='阶段' AND body LIKE ?)",
+                                    (WORD + "%", "%" + WORD + "%")).fetchall():
+            admin.conn.execute("DELETE FROM reply WHERE msg_id=?", (r[0],))
+            admin.conn.execute("DELETE FROM msg WHERE id=?", (r[0],))
         admin.conn.commit()
         left = admin.conn.execute("SELECT COUNT(*) FROM msg WHERE topic LIKE ? OR body LIKE ?",
                                   ("%" + WORD + "%", "%" + WORD + "%")).fetchone()[0]

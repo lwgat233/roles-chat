@@ -44,6 +44,10 @@ CREATE TABLE IF NOT EXISTS seen(
   msg_id INTEGER, role TEXT, seen_at INTEGER, PRIMARY KEY(msg_id, role));
 CREATE TABLE IF NOT EXISTS room(
   scope TEXT PRIMARY KEY, state TEXT, by_role TEXT, why TEXT, updated_at INTEGER);
+-- 项目阶段（经理闸门）：项目 = 一串阶段，经理只放行当前那个，后面的阶段收不到活
+CREATE TABLE IF NOT EXISTS stage(
+  project TEXT, seq INTEGER, name TEXT, role TEXT, state TEXT, updated_at INTEGER,
+  PRIMARY KEY(project, seq));
 """
 
 
@@ -115,8 +119,8 @@ class Talk:
             if action in (sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE):
                 if arg1 in ("role", "perm") and not admin:
                     return sqlite3.SQLITE_DENY        # 名册与权限：只有管理员能改
-                if arg1 == "room":
-                    # 房间/角色状态：有 room:control/write 的管理者才能改（"我"那个角色）
+                if arg1 in ("room", "stage"):
+                    # 房间状态 / 项目阶段：有 room:control/write 的管理者才能改（"我"那个角色 / 经理）
                     return sqlite3.SQLITE_OK if (admin or self._has("room:control", "write")) else sqlite3.SQLITE_DENY
                 if arg1 in ("msg", "reply", "seen"):
                     return sqlite3.SQLITE_OK          # 发言权：人人有
@@ -271,18 +275,91 @@ class Talk:
     def tmux_session(role):
         return "role-" + role.replace(".", "-")
 
-    def spawn(self, role, profile=None, cmd=None):
-        """给角色开一个 tmux 会话（他自己另开 tmux 看）"""
+    def spawn(self, role, profile=None, launch=None):
+        """给角色开一个 tmux 会话（**幂等**：已经在跑就不动它）；会话名固定 = role-<场景>-<角色>"""
         sess = self.tmux_session(role)
-        run = cmd or ("hermes -p %s chat" % profile if profile else "hermes chat")
+        if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode == 0:
+            return sess, False
+        # Hermes 侧也是"同一个会话续着走"：-c <角色全名> --create-if-missing
+        run = launch or ("hermes %s chat -c %s --create-if-missing" % (
+            ("-p " + profile) if profile else "", role))
         subprocess.run(["tmux", "new-session", "-d", "-s", sess, "-x", "120", "-y", "40", run], check=True)
-        return sess
+        return sess, True
+
+    # ---------- 项目阶段（经理闸门）：只放行当前阶段，后面的人收不到活 ----------
+    REPORT_FIELDS = ["做了什么", "证据", "判据", "依赖"]
+
+    def stage_add(self, project, seq, name, role):
+        self.conn.execute("INSERT OR REPLACE INTO stage(project,seq,name,role,state,updated_at)"
+                          " VALUES(?,?,?,?,COALESCE((SELECT state FROM stage WHERE project=? AND seq=?),'locked'),?)",
+                          (project, seq, name, role, project, seq, now_ts()))
+        self.conn.commit()
+
+    def stages(self, project=None):
+        q = "SELECT project,seq,name,role,state FROM stage"
+        args = ()
+        if project:
+            q += " WHERE project=?"
+            args = (project,)
+        return self.conn.execute(q + " ORDER BY project, seq", args).fetchall()
+
+    def gate_open(self, project, seq, by_role):
+        """经理放行某个阶段：它变 active；同一项目里它后面的阶段一律 locked"""
+        if not self._can_control():
+            raise PermissionError("只有管理者能放行阶段：%s" % by_role)
+        rows = list(self.stages(project))
+        if not any(r[1] == seq for r in rows):
+            raise ValueError("没有这个阶段：%s#%d" % (project, seq))
+        for p, s, name, role, state in rows:
+            new = "active" if s == seq else ("locked" if s > seq else state)
+            self.conn.execute("UPDATE stage SET state=?, updated_at=? WHERE project=? AND seq=?",
+                              (new, now_ts(), p, s))
+        self.conn.commit()
+        self.send(by_role, None, "default", "阶段", "【放行】%s 第 %d 步：%s" % (project, seq, self.stage_name(project, seq)))
+        return "active"
+
+    def stage_name(self, project, seq):
+        r = self.conn.execute("SELECT name FROM stage WHERE project=? AND seq=?", (project, seq)).fetchone()
+        return r[0] if r else "?"
+
+    def gate_done(self, project, seq, by_role):
+        """阶段收工：必须有该阶段的**格式合格的交付报告**（feature 里记着 P#N）才允许"""
+        feat = "%s#%d" % (project, seq)
+        n = self.conn.execute("SELECT COUNT(*) FROM msg WHERE feature=? AND topic LIKE '报告%'", (feat,)).fetchone()[0]
+        if not n:
+            raise RuntimeError("%s 第 %d 步还没有合格报告（先 run report），不放行下一步" % (project, seq))
+        if not self._can_control():
+            raise PermissionError("只有管理者能判定阶段完成：%s" % by_role)
+        self.conn.execute("UPDATE stage SET state='done', updated_at=? WHERE project=? AND seq=?",
+                          (now_ts(), project, seq))
+        self.conn.commit()
+        return "done"
+
+    def blocked_reason(self, role):
+        """这个角色现在能不能收到活：它所在项目里，阶段状态是 locked 就不行"""
+        rows = self.stages()
+        for p, s, name, r, state in rows:
+            if r == role and state == "locked":
+                return "%s 第 %d 步（%s）还没放行" % (p, s, name)
+        return None
+
+    def report(self, project, seq, from_role, body):
+        """按固定格式交活：缺字段直接拒绝（格式 = 做了什么/证据/判据/依赖）"""
+        missing = [f for f in self.REPORT_FIELDS if (f + ":") not in body and (f + "：") not in body]
+        if missing:
+            raise ValueError("交付格式不合格，缺：%s（格式见 README）" % "、".join(missing))
+        feat = "%s#%d" % (project, seq)
+        mid = self.send(from_role, None, "default", "报告 %s" % feat, body, feature=feat)
+        return mid
 
     def deliver(self, role, text, force=False):
         """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）"""
         p = self.is_paused(role)
         if p and not force:
             raise RuntimeError("已暂停（%s），不投递：%s —— 管理者用 start 恢复" % (p, role))
+        b = self.blocked_reason(role)
+        if b and not force:
+            raise RuntimeError("阶段没放行，不投递：%s（%s）—— 经理用 gate-open 放行" % (role, b))
         sess = self.tmux_session(role)
         if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode != 0:
             raise RuntimeError("角色 %s 没有会话（先 spawn）" % role)
@@ -344,11 +421,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["role-add", "perm-add", "send", "reply", "inbox", "search",
                                     "files", "selftest", "roles", "board", "tail", "spawn", "deliver",
-                                    "capture", "seen", "init-owner", "pause", "start", "status"])
+                                    "capture", "seen", "init-owner", "pause", "start", "status",
+                                    "stage-add", "gate", "gate-open", "gate-done", "report", "blocked"])
     ap.add_argument("--by", default=None)
     ap.add_argument("--why", default="")
     ap.add_argument("--hard", action="store_true")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--project", default=None)
+    ap.add_argument("--seq", type=int, default=0)
+    ap.add_argument("--name", default=None)
     ap.add_argument("--role", default=None)
     ap.add_argument("--profile", default=None)
     ap.add_argument("--lines", type=int, default=1000)
@@ -373,9 +454,11 @@ def main():
         return talk_selftest.run()
 
     # 控制类命令要**以"下令的人"的身份连库**（--by，默认 owner.me），
-    # 不能拿 --role（那是被管的对象）去连 —— 否则会被自己的权限检查拦下（踩过）
-    if a.cmd in ("pause", "start"):
+    # 不能拿 --role（那是被管的对象/阶段归属）去连 —— 否则会被自己的权限检查拦下（踩过两次）
+    if a.cmd in ("pause", "start", "stage-add", "gate-open", "gate-done"):
         t = Talk(a.by or "owner.me")
+    elif a.cmd == "report":
+        t = Talk(a.frm or a.role)          # 报告是"角色自己"交的活
     else:
         t = Talk(a.role)
     if a.cmd == "role-add":
@@ -413,8 +496,31 @@ def main():
     elif a.cmd == "tail":
         t.tail(a.lines)
     elif a.cmd == "spawn":
-        sess = t.spawn(a.role, a.profile)
-        print("已开会话：%s（另开一个 tmux 窗口 `tmux attach -t %s` 就能看它）" % (sess, sess))
+        sess, created = t.spawn(a.role, a.profile)
+        print("会话 %s：%s" % (sess, "已开" if created else "本来就在跑（幂等，没动它）"))
+    elif a.cmd == "stage-add":
+        t.stage_add(a.project, a.seq, a.name or ("第%d步" % a.seq), a.role)
+        print("阶段已登记：%s#%d %s → %s（初始 locked）" % (a.project, a.seq, a.name, a.role))
+    elif a.cmd == "gate":
+        rows = t.stages(a.project)
+        if not rows:
+            print("（还没有阶段）")
+        for p, s, name, role, state in rows:
+            mark = {"active": "◀ 进行中", "done": "✔ 已完成", "locked": "🔒 未放行"}.get(state, state)
+            print("%-24s #%d %-14s %-24s %s" % (p, s, name, role, mark))
+    elif a.cmd == "gate-open":
+        t.gate_open(a.project, a.seq, a.by or "owner.me")
+        print("已放行：%s 第 %d 步（后面的仍锁着）" % (a.project, a.seq))
+    elif a.cmd == "gate-done":
+        t.gate_done(a.project, a.seq, a.by or "owner.me")
+        print("已判定完成：%s 第 %d 步" % (a.project, a.seq))
+    elif a.cmd == "report":
+        body = a.text or sys.stdin.read()
+        mid = t.report(a.project, a.seq, a.frm or a.role, body)
+        print("#%d 报告已记（%s#%d）" % (mid, a.project, a.seq))
+    elif a.cmd == "blocked":
+        b = t.blocked_reason(a.role)
+        print("%s：%s" % (a.role, b or "可以收活（没被阶段卡住）"))
     elif a.cmd == "deliver":
         body = a.text or sys.stdin.read()
         if a.id:
