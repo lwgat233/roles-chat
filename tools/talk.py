@@ -755,19 +755,40 @@ class Talk:
         except Exception as e:
             return {"id": mid, "delivered": False, "error": str(e), "to": role}
 
-    def switch(self, role, spawn_if_missing=True):
-        """在**同一个 tmux 会话里切到这个角色**（roles:<窗口>）—— 用户不需要 tmux attach"""
-        self._ensure_ready()
-        win = win_name(role)
-        if win not in tmux_windows():
-            if not spawn_if_missing:
-                return {"role": role, "switched": False, "why": "没有会话（先拉起他）"}
-            self.spawn(role)
-        r = subprocess.run(["tmux", "select-window", "-t", "%s:%s" % (TMUX_SESSION, win)],
-                           capture_output=True, text=True)
-        if r.returncode != 0:
-            return {"role": role, "switched": False, "why": (r.stderr or "").strip() or "切不过去"}
-        return {"role": role, "switched": True, "target": "%s:%s" % (TMUX_SESSION, win)}
+    def switch_role(self, role):
+        """切到某个角色 = **恢复他的 Hermes 会话**（默认 hermes --resume 名字/标题），
+        不再是你本来就待在里面的 tmux attach / switch-client。模板可在设置里改。"""
+        r = self.conn.execute("SELECT full_name, bind FROM role WHERE full_name=? OR name=?", (role, role)).fetchone()
+        if not r:
+            return {"ok": False, "why": "没有这个角色：%s" % role}
+        full, bind = r[0], (r[1] or "")
+        tpl = self.get_setting("switch_cmd", "hermes --resume {v}")
+        mode = self.get_setting("switch_match", "title")
+        if mode == "session":
+            val = self.hermes_session_id_for(full) or full
+        elif mode == "none":
+            val = ""
+        else:
+            val = full
+        cmd = tpl.replace("{v}", val) if val else tpl
+        return {"ok": True, "role": full, "绑定": bind or ("roles:" + win_name(full)),
+                "会话目标": bind or ("roles:" + win_name(full)), "匹配方式": mode, "cmd": cmd}
+
+    def get_setting(self, k, default=""):
+        try:
+            r = self.conn.execute("SELECT v FROM setting WHERE k=?", (k,)).fetchone()
+            return (r[0] if r and r[0] else default)
+        except Exception:
+            return default
+
+    def hermes_session_id_for(self, role):
+        try:
+            for it in (self.hermes_sessions(limit=80).get("items") or []):
+                if (it.get("title") or "").strip() == role:
+                    return it.get("id") or None
+        except Exception:
+            pass
+        return None
 
     def deliver(self, role, text, force=False):
         """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）"""
@@ -1580,7 +1601,7 @@ def main():
     elif a.cmd == "session-del":
         print(json.dumps(t.session_del(a.name), ensure_ascii=False))
     elif a.cmd == "switch":
-        print(json.dumps(t.switch(a.role), ensure_ascii=False))
+        print(json.dumps(t.switch_role(a.role), ensure_ascii=False))
     elif a.cmd == "doctor":
         print(json.dumps(t.doctor(), ensure_ascii=False))
     elif a.cmd == "deliveries":
