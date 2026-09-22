@@ -618,6 +618,20 @@ class Talk:
         except Exception as e:
             return {"id": mid, "delivered": False, "error": str(e), "to": role}
 
+    def switch(self, role, spawn_if_missing=True):
+        """在**同一个 tmux 会话里切到这个角色**（roles:<窗口>）—— 用户不需要 tmux attach"""
+        self._ensure_ready()
+        win = win_name(role)
+        if win not in tmux_windows():
+            if not spawn_if_missing:
+                return {"role": role, "switched": False, "why": "没有会话（先拉起他）"}
+            self.spawn(role)
+        r = subprocess.run(["tmux", "select-window", "-t", "%s:%s" % (TMUX_SESSION, win)],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            return {"role": role, "switched": False, "why": (r.stderr or "").strip() or "切不过去"}
+        return {"role": role, "switched": True, "target": "%s:%s" % (TMUX_SESSION, win)}
+
     def deliver(self, role, text, force=False):
         """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）"""
         p = self.is_paused(role)
@@ -1212,7 +1226,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -1364,6 +1378,8 @@ def main():
         built = t._ensure_ready()
         d = t.doctor()
         print(json.dumps({"built": built, "doctor": d}, ensure_ascii=False))
+    elif a.cmd == "switch":
+        print(json.dumps(t.switch(a.role), ensure_ascii=False))
     elif a.cmd == "doctor":
         print(json.dumps(t.doctor(), ensure_ascii=False))
     elif a.cmd == "deliveries":
