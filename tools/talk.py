@@ -1360,6 +1360,10 @@ def main():
         print("已删 %s（连带清掉 %d 条权限、%d 条接入）" % (r["deleted"], r["perms_removed"], r["members_removed"]))
     elif a.cmd == "thread":
         print(json.dumps(t.thread(a.role, a.lines or 100), ensure_ascii=False))
+    elif a.cmd == "setup":
+        built = t._ensure_ready()
+        d = t.doctor()
+        print(json.dumps({"built": built, "doctor": d}, ensure_ascii=False))
     elif a.cmd == "doctor":
         print(json.dumps(t.doctor(), ensure_ascii=False))
     elif a.cmd == "deliveries":
