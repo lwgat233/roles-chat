@@ -427,6 +427,9 @@ class Talk:
         self._remember("role", role, role, sess, role, "角色窗口（roles 会话内，幂等）")
         return sess, True
 
+    # ---------- 项目阶段（经理闸门）----------
+    REPORT_FIELDS = ["做了什么", "证据", "判据", "依赖"]
+
     def stage_add(self, project, seq, name, role):
         self.conn.execute("INSERT OR REPLACE INTO stage(project,seq,name,role,state,updated_at)"
                           " VALUES(?,?,?,?,COALESCE((SELECT state FROM stage WHERE project=? AND seq=?),'locked'),?)",
@@ -504,6 +507,20 @@ class Talk:
     def role_online(self, role):
         """在线 = 他在 roles 里有窗口（或旧的独立会话还活着）"""
         return (win_name(role) in tmux_windows()) or self._alive(self.tmux_session(role))
+
+    def say(self, role, body, topic="私信", kind="private", frm="me"):
+        """我(TUI/面板)对他说一句：记进对话 + 投进他的窗口，**并带上来源标签**，
+        末尾告诉他"用函数回我"（talk.py reply --id N），这样回话走的是正式通道、面板能画成气泡。
+        """
+        mid = self.send(frm, role, kind, topic, body)
+        label = ("【频道广播】" if kind == "broadcast" else "【私聊】") + "来自 %s" % frm
+        text = "%s #%d\n%s\n\n（回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\"）" % (
+            label, mid, body, mid, role)
+        try:
+            self.deliver(role, text)
+        except Exception as e:
+            return {"id": mid, "delivered": False, "error": str(e)}
+        return {"id": mid, "delivered": True}
 
     def deliver(self, role, text, force=False):
         """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）"""
@@ -958,7 +975,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -1002,7 +1019,8 @@ def main():
                  "member-add", "member-del", "wake-ok", "wake-skip",
                  # 治理类（改名册/权限/角色）也必须以下令者身份连库 ——
                  # 否则会拿"无角色的连接"连（= 管理员），权限检查形同虚设（踩过：非经理删掉了角色）
-                 "role-add", "perm-add", "role-edit", "role-del"):
+                 "role-add", "perm-add", "role-edit", "role-del",
+                 "say"):
         t = Talk(a.by or "owner.me")
     elif a.cmd == "report":
         t = Talk(a.frm or a.role)          # 报告是"角色自己"交的活
@@ -1159,6 +1177,9 @@ def main():
         if not t._alive(target):
             print("会话不在：%s（先 spawn/solo）" % target); return 3
         print("tmux attach -t %s" % target)
+    elif a.cmd == "say":
+        r = t.say(a.role, a.body or a.text or "", a.topic or "私信", a.kind or "private")
+        print("#%d 已记入并投给 %s（投递%s）" % (r["id"], a.role, "成功" if r.get("delivered") else "失败：" + str(r.get("error"))))
     elif a.cmd == "deliver":
         body = a.text or sys.stdin.read()
         if a.id:
