@@ -5,8 +5,11 @@ roles-chat —— 多角色：角色名册 / 经验库 / 可检索对话（含 S
 
 tools/
   talk.py                对话核心：文本日志（权威）+ SQLite 索引 + 角色权限（授权器 + 按身份建视图）
-  talk_selftest.py       自检 20 条（三类消息 / 私信隔离 / 直读表被拒 / 审计角色 / inbox / 日志隔离 / 收尾自清）
+  talk_selftest.py       自检 31 条（三类消息 / 私信隔离 / 直读表被拒 / 经理看不到私信 / 阶段闸门 / 报告格式 / 收尾自清）
   exp_index.py           经验库：list / must / search / check
+install.sh               一条命令搭建（建库建角色 → 从 talk/*.md 重建 → 自检）；换地方就靠它
+SPEC.md                  定型规范 v1（改结构/格式/权限必须先改它）
+evidence/portability-test.txt   可迁移性验证：新位置 + 删库 → install.sh 重建 → 31 条全绿
 
 experiences/             经验（目录名 = 角色全名）
   pipeline.author/guard-scan-all-dex.md              必读：守卫要扫全部 dex

@@ -17,13 +17,15 @@ talk.py —— 多角色对话：文本为权威 + SQLite 索引 + 角色权限�
 """
 import argparse
 import os
+import re
 import sqlite3
 import subprocess
 import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+# 换地方也能用：默认按本项目自己的位置推导，可用 ROLES_CHAT_HOME 覆盖（"定型"的一部分）
+ROOT = os.environ.get("ROLES_CHAT_HOME") or os.path.dirname(HERE)
 TALK_DIR = os.path.join(ROOT, "talk")
 DB = os.path.join(ROOT, "talk.db")
 EVID = os.path.join(ROOT, "evidence")
@@ -384,6 +386,65 @@ class Talk:
                            capture_output=True, text=True)
         return p.stdout
 
+    def init(self, owner="owner.me"):
+        """把一套系统建起来：库表 + 经理 + 本场景的三个角色（幂等，可反复跑）"""
+        self.init_owner(owner)
+        for full, title in [("pipeline.author", "功能创造者"), ("pipeline.renderer", "渲染者"),
+                            ("pipeline.tester", "测试者")]:
+            self.conn.execute("INSERT OR REPLACE INTO role(full_name,scene,name,title,created_at) VALUES(?,?,?,?,?)",
+                              (full, full.split(".")[0], full.split(".")[1], title, now_ts()))
+        self.conn.commit()
+        return [r[0] for r in self.conn.execute("SELECT full_name FROM role ORDER BY full_name")]
+
+    def rebuild(self):
+        """从 talk/*.md 重建库（**文本是权威源**：换机器、库丢了都靠这一步恢复）
+        日志格式（每块）：[时间] 谁 → 谁 | 全体? 是/否 | 话题:x | 必读:是/否 | #id ／ 缩进正文 ／ ↳ 回复 [时间] 谁: …"""
+        self.conn.execute("DELETE FROM reply")
+        self.conn.execute("DELETE FROM msg")
+        self.conn.commit()
+        n = r = 0
+        files = sorted(f for f in os.listdir(TALK_DIR)) if os.path.isdir(TALK_DIR) else []
+        for fn in files:
+            if not fn.endswith(".md"):
+                continue
+            kind, to_file, from_file = "default", None, None
+            m2 = re.match(r"\d{4}-\d{2}-\d{2}-private-(.+?)__(.+?)\.md$", fn)
+            if m2:
+                kind, from_file, to_file = "private", m2.group(1), m2.group(2)
+            elif re.match(r"\d{4}-\d{2}-\d{2}-broadcast\.md$", fn):
+                kind = "broadcast"
+            cur = None
+            path = os.path.join(TALK_DIR, fn)
+            for line in open(path, encoding="utf-8").read().splitlines():
+                h = re.match(r"^\[([\d\-: ]+)\] (.+?) → (.+?) \| 全体\? (\S+) \| 话题:(\S*) \| 必读:(\S+) \| #(\d+)$", line)
+                if h:
+                    ts = int(time.mktime(time.strptime(h.group(1), "%Y-%m-%d %H:%M:%S")))
+                    to_role = None if h.group(3) in ("全体", "") else h.group(3)
+                    if to_role is None and to_file:
+                        to_role = None
+                    k = "broadcast" if h.group(4) == "是" else kind
+                    cur = int(h.group(7))
+                    self.conn.execute(
+                        "INSERT OR REPLACE INTO msg(id,kind,from_role,to_role,topic,body,created_at,"
+                        "must_reply,feature,file_path) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (cur, k, h.group(2), to_role, h.group(5), "", ts,
+                         1 if h.group(6) == "是" else 0, None, fn))
+                    n += 1
+                    continue
+                rp = re.match(r"^\s+↳ 回复 \[([\d\-: ]+)\] (.+?): (.*)$", line)
+                if rp and cur:
+                    ts = int(time.mktime(time.strptime(rp.group(1), "%Y-%m-%d %H:%M:%S")))
+                    self.conn.execute("INSERT INTO reply(msg_id,from_role,body,created_at) VALUES(?,?,?,?)",
+                                      (cur, rp.group(2), rp.group(3), ts))
+                    r += 1
+                    continue
+                if line.startswith("    ") and cur is not None:
+                    row = self.conn.execute("SELECT body FROM msg WHERE id=?", (cur,)).fetchone()
+                    nb = ((row[0] + "\n") if (row and row[0]) else "") + line.strip()
+                    self.conn.execute("UPDATE msg SET body=? WHERE id=?", (nb, cur))
+        self.conn.commit()
+        return n, r
+
     def watch(self, poll=1.0, once=False, since=None):
         """实时跟随：新消息一出现就打印（他本人＝带 🔒 的私信也看得到；带 --role 就是那个角色有权看的）
         公开频道刷新 / pocket 的频道面板就跑这一条。游标按 **id** 走（时间戳是秒级的，会重复刷同一条）。"""
@@ -451,7 +512,7 @@ def main():
                                     "files", "selftest", "roles", "board", "tail", "spawn", "deliver",
                                     "capture", "seen", "init-owner", "pause", "start", "status",
                                     "stage-add", "gate", "gate-open", "gate-done", "report", "blocked",
-                                    "watch"])
+                                    "watch", "init", "rebuild"])
     ap.add_argument("--poll", type=float, default=1.0)
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--by", default=None)
@@ -554,6 +615,12 @@ def main():
         print("%s：%s" % (a.role, b or "可以收活（没被阶段卡住）"))
     elif a.cmd == "watch":
         t.watch(a.poll, a.once)
+    elif a.cmd == "init":
+        roles = t.init(a.full or "owner.me")
+        print("已建好：库表 + 经理 + 角色 → %s" % "、".join(roles))
+    elif a.cmd == "rebuild":
+        n, r = t.rebuild()
+        print("从 talk/*.md 重建完成：消息 %d 条、回复 %d 条" % (n, r))
     elif a.cmd == "deliver":
         body = a.text or sys.stdin.read()
         if a.id:
