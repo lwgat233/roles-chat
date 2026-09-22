@@ -1320,6 +1320,7 @@ def main():
                                     "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "bind", "unbind", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
+    ap.add_argument("--session", default=None, help="要绑的会话（roles:home-maid 或 hermes）")
     ap.add_argument("--dry", action="store_true")
     ap.add_argument("--poll", type=float, default=1.0)
     ap.add_argument("--once", action="store_true")
@@ -1362,7 +1363,7 @@ def main():
                  # 治理类（改名册/权限/角色）也必须以下令者身份连库 ——
                  # 否则会拿"无角色的连接"连（= 管理员），权限检查形同虚设（踩过：非经理删掉了角色）
                  "role-add", "perm-add", "role-edit", "role-del",
-                 "say"):
+                 "say", "bind", "unbind"):
         t = Talk(a.by or "owner.me")
     elif a.cmd == "report":
         t = Talk(a.frm or a.role)          # 报告是"角色自己"交的活

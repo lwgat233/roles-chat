@@ -1,2 +1,3 @@
-[2026-09-22 23:01:47] pipeline.author → pipeline.tester | 全体? 否 | 话题:私信-selftest1790089307 | 必读:否 | #558
-    private 消息：只给测试者 selftest1790089307
+[2026-09-22 23:02:09] pipeline.author → pipeline.tester | 全体? 否 | 话题:私信-selftest1790089329 | 必读:否 | #562
+    private 消息：只给测试者 selftest1790089329
+    ↳ 回复 [2026-09-22 23:02:10] pipeline.tester: 收到，判据已加（selftest1790089329）
