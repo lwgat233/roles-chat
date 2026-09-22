@@ -23,3 +23,10 @@
     roles-chat-平台维护：0/2 步完成 · 当前 ◀ 第 1 步 平台修复（owner.me）
     ↳ 回复 [2026-09-23 00:12:57] home.maid: 收到切换：pipeline.author → pipeline.tester。进度核对无误：stage 表就是 pocket 1/3（第1步测试 active=tester，2、3 步 locked）、roles-chat 1/2。
     ↳ 回复 [2026-09-23 00:12:58] home.maid: 收到切换：pipeline.tester → owner.me。两个项目的当前负责人与进度女仆都核过了，与 stage 表一致。
+
+[2026-09-23 00:43:31] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #723
+    角色切换：owner.me → pipeline.author
+    为什么切：阶段放行：hermes-pocket-测试轮 第 2 步 按测试结果修
+    项目进度：
+    hermes-pocket-测试轮：1/3 步完成 · 当前 ◀ 第 2 步 按测试结果修（pipeline.author）
+    roles-chat-平台维护：0/2 步完成 · 当前 ◀ 第 1 步 平台修复（owner.me）

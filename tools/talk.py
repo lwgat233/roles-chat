@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS perm(
 CREATE TABLE IF NOT EXISTS msg(
   id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT CHECK(kind IN ('default','broadcast','private')),
   from_role TEXT, to_role TEXT, topic TEXT, body TEXT, created_at INTEGER,
-  must_reply INTEGER DEFAULT 0, feature TEXT, file_path TEXT);
+  must_reply INTEGER DEFAULT 0, feature TEXT, file_path TEXT, scope TEXT,
+  hidden INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS reply(
   id INTEGER PRIMARY KEY AUTOINCREMENT, msg_id INTEGER, from_role TEXT, body TEXT, created_at INTEGER);
 CREATE TABLE IF NOT EXISTS seen(
@@ -160,11 +161,15 @@ class Talk:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         self.conn = sqlite3.connect(path)
         self.conn.executescript(SCHEMA)
-        # 老库补列（CREATE TABLE IF NOT EXISTS 不会加列）：角色标签、消息的广播范围
+        # 老库补列（CREATE TABLE IF NOT EXISTS 不会加列）：角色标签、消息的广播范围、隐形对接、角色绑定会话。
+        # 必须在这里补：`send()` 这类高频路径不会先跑 ensure_schema()，漏一列就是
+        # 「放行/发言整个报 `table msg has no column named hidden`」（2026-09-23 踩过，放行通知因此发不出去）。
         for sql in ("CREATE TABLE IF NOT EXISTS pref(k TEXT PRIMARY KEY, v TEXT)",
                    "ALTER TABLE notify ADD COLUMN answered_at INTEGER",
                    "ALTER TABLE role ADD COLUMN tags TEXT",
-                    "ALTER TABLE msg ADD COLUMN scope TEXT"):
+                   "ALTER TABLE role ADD COLUMN bind TEXT",
+                    "ALTER TABLE msg ADD COLUMN scope TEXT",
+                    "ALTER TABLE msg ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0"):
             try:
                 self.conn.execute(sql)
             except sqlite3.Error:
@@ -240,21 +245,25 @@ class Talk:
         return "'" + str(s).replace("'", "''") + "'"
 
     # ---------- 写 ----------
-    def send(self, from_role, to_role, kind, topic, body, must_reply=False, feature=None, scope=None):
+    def send(self, from_role, to_role, kind, topic, body, must_reply=False, feature=None, scope=None,
+             hidden=False):
+        """hidden=True = **隐形对接信息**：只入库，不写文本日志、不建唤醒、不进面板/推送（本人看不到）。"""
         if self.role and self.role != from_role:
             raise PermissionError("我是 %s，不能替 %s 发言" % (self.role, from_role))
         ts = now_ts()
         path = log_path(kind, from_role, to_role)
         os.makedirs(TALK_DIR, exist_ok=True)
         cur = self.conn.execute(
-            "INSERT INTO msg(kind,from_role,to_role,topic,body,created_at,must_reply,feature,file_path,scope)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO msg(kind,from_role,to_role,topic,body,created_at,must_reply,feature,file_path,scope,hidden)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             (kind, from_role, to_role, topic, body, ts, 1 if must_reply else 0, feature,
-             os.path.relpath(path, ROOT), scope))
+             os.path.relpath(path, ROOT), scope, 1 if hidden else 0))
         mid = cur.lastrowid
         self.conn.commit()
         # 发完就把"谁该动"摊开：私信/@点名 → 直接唤醒；广播 → 候选，等经理放行（见 wake_seed）
         # 注意：**不要静默吞异常** —— 吞了就会出现"消息发了但没有唤醒记录"这种查不出的怪事
+        if hidden:
+            return mid          # 隐形：不建唤醒、不写文本日志（文本日志是给本人 grep 的）
         self.wake_seed(mid)
         head = "[%s] %s → %s | 全体? %s | 话题:%s | 必读:%s | #%d\n" % (
             fmt(ts), from_role, (to_role or "全体"), "是" if kind == "broadcast" else "否",
@@ -290,7 +299,7 @@ class Talk:
     def _rows(self):
         return self.conn.execute(
             "SELECT id,kind,from_role,to_role,topic,body,created_at,must_reply FROM v_msg"
-            " ORDER BY created_at").fetchall()
+            " WHERE COALESCE(hidden,0)=0 ORDER BY created_at").fetchall()
 
     def board(self, limit=1000, role=None):
         """一屏看全部对话：🔒 私信 / 📢 全体 / · default，带收发、时间、话题、必读、回复数"""
@@ -350,12 +359,18 @@ class Talk:
         return None
 
     def stop_role(self, role, hard=False):
-        """让她停：先发 /stop 打断当前回合；hard=True 连 tmux 会话一起收"""
+        """让她停：先发 /stop 打断当前回合；hard=True 只收**她那一个窗口**（绝不收整个 roles 会话）"""
         sess = self.target(role)
         alive = subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode == 0
         if alive:
             if hard:
-                subprocess.run(["tmux", "kill-session", "-t", sess], capture_output=True)
+                # 目标形如 "roles:pipeline-tester" 时必须 kill-window：
+                # `tmux kill-session -t roles:xxx` 会忽略窗口部分、把整个 roles 会话连别人一起杀掉
+                # （2026-09-23 事故：5 个角色的进程全被 SIGHUP，只能按名字重新 spawn 恢复）。
+                if ":" in sess:
+                    subprocess.run(["tmux", "kill-window", "-t", sess], capture_output=True)
+                else:
+                    subprocess.run(["tmux", "kill-session", "-t", sess], capture_output=True)
             else:
                 subprocess.run(["tmux", "send-keys", "-t", sess, "/stop", "Enter"], capture_output=True)
         return alive
@@ -465,6 +480,12 @@ class Talk:
         if "bind" not in cols:
             self.conn.execute("ALTER TABLE role ADD COLUMN bind TEXT")
             self.conn.commit()
+        mcols = [r[1] for r in self.conn.execute("PRAGMA table_info(msg)")]
+        for col, ddl in (("scope", "ALTER TABLE msg ADD COLUMN scope TEXT"),
+                         ("hidden", "ALTER TABLE msg ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")):
+            if col not in mcols:
+                self.conn.execute(ddl)
+                self.conn.commit()
         return True
 
     def _remember(self, kind, name, role, tmux, hermes, note=""):
@@ -533,6 +554,9 @@ class Talk:
 
     def spawn(self, role, profile=None, launch=None):
         """给角色在 roles 会话里开一个**窗口**（幂等）；一个 tmux 装所有角色，不再一个角色一个会话"""
+        if role == "home.maid":
+            # 女仆就是本人的 QQ 通道本身（唯一会话），不需要也不许再开第二个（2026-09-23 用户拍定）
+            raise RuntimeError("home.maid 不需要单独会话：她就是本人的 QQ 通道（唯一），别开第二个")
         self._ensure_ready()          # 还没搭就先搭：没有搭建也可以拉起来时搭
         win = win_name(role)
         ensure_tmux_session()
@@ -625,6 +649,9 @@ class Talk:
             raise ValueError("交付格式不合格，缺：%s（格式见 README）" % "、".join(missing))
         feat = "%s#%d" % (project, seq)
         mid = self.send(from_role, None, "default", "报告 %s" % feat, body, feature=feat)
+        # 交付报告也是"他要知道的进度"：自动标上要通知，女仆会在下一批（默认 5 分钟）转达给他。
+        # 之前只走 default 消息不标记 → 报告躺在频道里没人推给他（用户问过"怎么不上报"）。
+        self.mark_notify(mid)
         return mid
 
     HERMES = "/home/lwgat/.hermes/hermes-agent/venv/bin/hermes"
@@ -732,7 +759,9 @@ class Talk:
         return "%s:%s" % (TMUX_SESSION, win)
 
     def role_online(self, role):
-        """在线 = 他在 roles 里有窗口（或旧的独立会话还活着）"""
+        """在线 = 他在 roles 里有窗口（或旧的独立会话还活着）；home.maid 恒在线（她在 QQ 通道里）"""
+        if role == "home.maid":
+            return True
         return (win_name(role) in tmux_windows()) or self._alive(self.tmux_session(role))
 
     def say(self, role, body, topic="私信", kind="private", frm="me"):
@@ -848,6 +877,9 @@ class Talk:
 
     def deliver(self, role, text, force=False):
         """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）"""
+        if role == "home.maid":
+            # 女仆＝本人的 QQ 通道，不往 tmux 投（她也不需要会话）；返回"通道"当投递目标
+            return self.setting_get("qq_target") or "qqbot"
         p = self.is_paused(role)
         if p and not force:
             raise RuntimeError("已暂停（%s），不投递：%s —— 管理者用 start 恢复" % (p, role))
@@ -883,6 +915,7 @@ class Talk:
     def init(self, owner="owner.me"):
         """把一套系统建起来：库表 + 经理 + 本场景的三个角色（幂等，可反复跑）"""
         self.init_owner(owner)
+        self.ensure_schema()      # 顺手补列（role.bind）——否则新库/副本库上 switch、bind 直接崩
         for full, title in [("pipeline.author", "功能创造者"), ("pipeline.renderer", "渲染者"),
                             ("pipeline.tester", "测试者"),
                             ("home.maid", "可爱女仆（个人助手：管生活，把要紧的话中转给我）")]:
@@ -944,7 +977,7 @@ class Talk:
         """给面板轮询用：id 大于 after_id 的新消息（面板每隔一两秒问一次，不用长连接）"""
         rows = self.conn.execute(
             "SELECT id,kind,from_role,to_role,topic,body,created_at,must_reply FROM v_msg"
-            " WHERE id > ? ORDER BY id LIMIT ?", (after_id, limit)).fetchall()
+            " WHERE id > ? AND COALESCE(hidden,0)=0 ORDER BY id LIMIT ?", (after_id, limit)).fetchall()
         return {"last": (rows[-1][0] if rows else after_id), "messages": [
             {"id": r[0], "kind": r[1], "from": r[2], "to": r[3], "topic": r[4],
              "body": r[5], "at": r[6], "must_reply": bool(r[7])} for r in rows]}
@@ -991,7 +1024,7 @@ class Talk:
         cur = cursor if cursor is not None else int(self.state_get("relay_cursor", "0") or 0)
         sent = []
         rows = self.conn.execute(
-            "SELECT id,kind,from_role,to_role,scope,body FROM v_msg WHERE id>? AND from_role IN ('me','owner.me')"
+            "SELECT id,kind,from_role,to_role,scope,body FROM v_msg WHERE id>? AND from_role IN ('me','owner.me','home.maid')"
             " ORDER BY id", (cur,)).fetchall()
         for mid, kind, frm, to_role, scope, body in rows:
             if not deliver:
@@ -1137,7 +1170,8 @@ class Talk:
         out = []
         for kind, fr, to, body, ts, mid in self.conn.execute(
                 "SELECT kind,from_role,to_role,body,created_at,id FROM v_msg WHERE"
-                " (from_role IN (%s) AND to_role=?) OR from_role=? ORDER BY id LIMIT ?" % ph,
+                " COALESCE(hidden,0)=0 AND ((from_role IN (%s) AND to_role=?) OR from_role=?)"
+                " ORDER BY id LIMIT ?" % ph,
                 tuple(MINE) + (role, role, limit)).fetchall():
             out.append({"id": mid, "who": "me" if fr in MINE else "him", "body": body, "at": ts or 0})
         try:
@@ -1148,6 +1182,43 @@ class Talk:
             pass
         out.sort(key=lambda x: x["at"])
         return {"role": role, "count": len(out), "items": out}
+
+    def ack_line(self, msg_id):
+        """**对接信息**（本人看不到）：这条投给了谁、投成没投成、谁读了、谁回了。"""
+        try:
+            rows = self.conn.execute("SELECT role, ok FROM delivery WHERE msg_id=?", (msg_id,)).fetchall()
+        except Exception:
+            rows = []
+        try:
+            seen = self.conn.execute("SELECT role FROM seen WHERE msg_id=?", (msg_id,)).fetchall()
+        except Exception:
+            seen = []
+        try:
+            reps = self.conn.execute("SELECT COUNT(*) FROM reply WHERE msg_id=?", (msg_id,)).fetchone()[0]
+        except Exception:
+            reps = 0
+        parts = []
+        if rows:
+            ok = sum(1 for r in rows if r[1])
+            parts.append("投递 %d/%d" % (ok, len(rows)))
+            bad = [r[0] for r in rows if not r[1]]
+            if bad:
+                parts.append("没投到：" + "、".join(bad))
+        else:
+            parts.append("无投递记录")
+        parts.append("已读 %d" % len(seen))
+        parts.append("已回 %d" % reps)
+        return "#%d 对接：%s" % (msg_id, " · ".join(parts))
+
+    def ack(self, msg_id, state="", by_role="", note="", to_role=""):
+        """记一条**隐形**对接信息（本人看不到），或只读回状态（state 留空）。
+        state: delivered / read / replied / failed。"""
+        if not state:
+            return {"line": self.ack_line(msg_id)}
+        body = "【对接】%s%s" % (state, ("：" + note) if note else "")
+        mid = self.send(by_role or "home.maid", to_role or None, "private",
+                        "对接 #%d" % msg_id, body, hidden=True)
+        return {"id": mid, "line": self.ack_line(msg_id)}
 
     def deliveries_json(self, limit=20):
         """投递台账（面板显示"谁收了、谁没收、为什么"）"""
@@ -1260,13 +1331,30 @@ class Talk:
                           " VALUES(?,?,NULL,NULL)", (msg_id, now_ts()))
         self.conn.commit()
 
-    def relay(self, target=None, dry=False, limit=20):
+    def relay(self, target=None, dry=False, limit=20, force=False, min_interval=None):
         """女仆的活：把"标了要通知他、还没推过"的话整理成固定格式推给他（默认 QQ 专属对话）。
-        格式：谁 → 什么事 → 要你决定什么 → 什么时候要。dry=True 只打印不发。"""
+        格式：谁 → 什么事 → 要你决定什么 → 什么时候要。dry=True 只打印不发。
+
+        **节流**：默认按 `relay_min_interval`（默认 300 秒＝5 分钟）一批批推——
+        这段时间里攒下的合并成一条，避免经理/角色一条一条轰他。force=True 立刻推。
+        """
         tgt = target or self.setting_get("qq_target") or ""
+        if not dry and not force:
+            try:
+                interval = int(min_interval if min_interval is not None
+                               else (self.setting_get("relay_min_interval", "300") or 300))
+            except Exception:
+                interval = 300
+            try:
+                last_ts = int(self.state_get("relay_last_push", "") or 0)
+            except Exception:
+                last_ts = 0
+            if interval > 0 and last_ts and (now_ts() - last_ts) < interval:
+                return 0, tgt, ""          # 还没到下一批的时间点，先攒着
         rows = self.conn.execute(
             "SELECT m.id,m.from_role,m.to_role,m.topic,m.body,m.created_at FROM v_msg m"
-            " JOIN notify n ON n.msg_id=m.id WHERE n.pushed_at IS NULL ORDER BY m.id LIMIT ?",
+            " JOIN notify n ON n.msg_id=m.id WHERE n.pushed_at IS NULL AND COALESCE(m.hidden,0)=0"
+            " ORDER BY m.id LIMIT ?",
             (limit,)).fetchall()
         if not rows:
             return 0, tgt, ""
@@ -1287,6 +1375,7 @@ class Talk:
                 self.conn.execute("UPDATE notify SET pushed_at=?, channel=? WHERE msg_id=?",
                                   (now_ts(), tgt, mid))
             self.conn.commit()
+            self.state_set("relay_last_push", str(now_ts()))     # 下一批的计时起点
         return len(rows), tgt, text
 
     def _label_tag(self, kind, frm, mid):
@@ -1347,7 +1436,7 @@ class Talk:
         while True:
             rows = self.conn.execute(
                 "SELECT id,kind,from_role,to_role,topic,body,created_at,must_reply FROM v_msg"
-                " WHERE id > ? ORDER BY id", (last,)).fetchall()
+                " WHERE id > ? AND COALESCE(hidden,0)=0 ORDER BY id", (last,)).fetchall()
             for r in rows:
                 tag = {"private": "🔒", "broadcast": "📢", "default": "· "}[r[1]]
                 first = (r[5] or "").splitlines()[0][:90] if r[5] else ""
@@ -1579,7 +1668,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run", "wake-purge",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "ack", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--session", default=None, help="要绑的会话（roles:home-maid 或 hermes）")
@@ -1611,6 +1700,7 @@ def main():
     ap.add_argument("--id", type=int, default=0)
     ap.add_argument("--must-reply", action="store_true")
     ap.add_argument("--q", default="")
+    ap.add_argument("--state", default="", help="对接状态：delivered/read/replied/failed（ack 用）")
     ap.add_argument("--minutes", type=int, default=45,
                     help="逾期追问阈值（分钟，默认 45）")
     ap.add_argument("--max", type=int, default=2,
@@ -1840,9 +1930,18 @@ def main():
                     last_nudge = _t.time()
                     for mid, role, age, what, n in t.nudge(a.minutes, max_nudges=a.max):
                         print("  追问 #%d → %s（过了 %d 分钟，%s，第 %d 次）" % (mid, role, age, what, n))
+                if t.setting_get("qq_target"):              # 女仆转达：攒够一批（默认 5 分钟）整条推给他
+                    n_relay, tgt_relay, _ = t.relay()
+                    if n_relay:
+                        print("  女仆转达：%d 条 → %s" % (n_relay, tgt_relay))
             except Exception as e:
                 print("  一轮出错：%s" % e)
             _t.sleep(a.poll or 5)
+    elif a.cmd == "ack":
+        if a.state:
+            r = t.ack(a.id, a.state, a.by or "home.maid", a.text or "", a.to or "")
+            print("已记隐形对接信息 #%d（本人看不到）" % r["id"])
+        print(t.ack_line(a.id))
     elif a.cmd == "nudge":
         rows = t.nudge(a.minutes, dry=a.dry, max_nudges=a.max)
         if not rows:

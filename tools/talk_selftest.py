@@ -120,10 +120,12 @@ def run():
               admin.can_send_to_session("pipeline.renderer", "roles:home-maid"))
 
         # --- 角色 ↔ session 绑定：绑了就用绑的，没绑就用默认窗口 ---
+        # 绑定目标要挑**真存在的窗口**：home-maid 窗口已经不存在了（home.maid = 本人的 QQ 通道，按设计没有窗口）
         _fn = "pipeline.tester"
+        _other = "roles:pipeline-author"
         check("没绑时用默认窗口", r.tmux_session(_fn) == "roles:pipeline-tester", r.tmux_session(_fn))
-        _b = admin.role_bind(_fn, "roles:home-maid")
-        check("bind 后只用这个 session", _b.get("ok") and admin.tmux_session(_fn) == "roles:home-maid", _b)
+        _b = admin.role_bind(_fn, _other)
+        check("bind 后只用这个 session", _b.get("ok") and admin.tmux_session(_fn) == _other, _b)
         _bad = admin.role_bind(_fn, "roles:no-such-window-xyz")
         check("绑到不存在的会话要拒", (not _bad.get("ok")) and "没有这个会话" in _bad.get("why", ""), _bad.get("why"))
         admin.role_unbind(_fn)

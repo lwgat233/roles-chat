@@ -71,6 +71,36 @@ python3 tools/talk.py nudge --minutes 45 --max 2        # 手动跑一次（加 
   **改了 `talk.py` 必须重启服务才生效**：`systemctl --user restart roles-relay.service`。
   unit 必须指向真项目 `/vol1/1000/airesults/roles-chat`（曾经指到过一份 `aicache/tmp/rc-gh` 的副本，导致中转站对着另一个库干活）。
 
+## 女仆转达的节奏：5 分钟一批（2026-09-23 定）
+
+经理/角色标了「要通知他」的东西，**不是一条一条推**，而是攒成一批推给本人：
+
+- 节流键：`setting.relay_min_interval`（秒，默认 **300**＝5 分钟）；`pref.relay_last_push` 记上一批的推送时刻。
+- `relay()` 在这个窗口内**直接返回 0 条**（条目仍挂在 `notify.pushed_at IS NULL`），到点后一次推出；`force=True` 可立即推。
+- 中转站每轮都会调一次 `relay()`（以前只在有人主动调时才推 → 「标了通知却一直没到我手上」就是那个漏洞），所以队列到点会自动清。
+- 验证配方：沙箱里把 `HERMES_BIN` 换成 `/bin/true`，攒 3 条 → 第一次推 3、紧接着推 0、把 `relay_last_push` 拨回 400 秒前再推 1。
+
+## 女仆＝本人的 QQ 通道（唯一，2026-09-23 定）
+
+- 名册里的 `home.maid` **不是一个需要 tmux 窗口的角色**，而是那条 QQ 通道的署名
+  （用户原话：「你就是女仆啊」「你的 session 本来就是唯一的」）。
+- 所以：**不许 `spawn --role home.maid`**（会被拒）；`deliver('home.maid', …)` 直接返回 QQ 目标、不往 tmux 投；
+  `role_online('home.maid')` 恒 True；`session` 表里她那行指向**本人的 QQ 会话**（`hermes=<QQ 会话 id>`，`tmux` 写 qq 目标）。
+- **事故教训（2026-09-23）**：`stop_role(hard=True)` 原先是 `tmux kill-session -t <target>`，
+  而 target 形如 `roles:home-maid` → **tmux 忽略窗口部分、把整个 roles 会话杀掉**，5 个角色全被 SIGHUP，
+  只能按名字重新 `spawn` 恢复（上下文没丢）。已修：目标含 `:` 时用 `kill-window`，只有裸会话名才用 `kill-session`。
+
+## 隐形对接信息（2026-09-23 定：能看出"收没收到"，但本人看不到）
+
+- **一条消息的对接状态**：`talk.py ack --id N` → `#N 对接：投递 2/2 · 已读 1 · 已回 1`
+  （投递数取自 `delivery`、已读取自 `seen`、已回取自 `reply`；没投到的角色会点名）。
+  **这是给角色/系统看的，不推送、不进面板、不进文本日志**，所以本人看不到。
+- **要记一条对接**：`talk.py ack --id N --state read|delivered|replied|failed --note "…"`
+  → 写一条**隐形消息**（`msg.hidden=1`）：只入库，不写 `talk/*.md`、不建 wake、不进面板/气泡/推送。
+- 过滤点（本人侧全部视图）：`board` / `watch` / `since_json` / `thread`(气泡) / `relay`(推 QQ)。
+  文本日志是"给本人 grep 的"，所以隐形消息**一律不写进去**。
+- 用途：女仆/经理之间的"收到没""转达没"这类握手，以后走隐形通道，不再往对话里塞【已转】那种会占屏的条。
+
 ## 交付报告的固定格式（角色交活必须带这四行）
 
 ```
