@@ -509,18 +509,42 @@ class Talk:
         return (win_name(role) in tmux_windows()) or self._alive(self.tmux_session(role))
 
     def say(self, role, body, topic="私信", kind="private", frm="me"):
-        """我(TUI/面板)对他说一句：记进对话 + 投进他的窗口，**并带上来源标签**，
-        末尾告诉他"用函数回我"（talk.py reply --id N），这样回话走的是正式通道、面板能画成气泡。
+        """我(本人)说一句：**记进对话 + 主动投给他**，每条都带来源标签（哪儿发的 + 谁发的 + 编号），
+        末尾告诉他用 reply 函数回我（这样回话走正式通道，面板能画成气泡）。
+        role 传 全体/ all 时 = 广播：**对每个相关的人各投一份、各存记录**（不靠"文件被改了你自己看"）。
         """
+        if str(role) in ("全体", "all", "*"):
+            kind = "broadcast"
+            mid = self.send(frm, "全体", kind, topic, body)
+            rows = [r[0] for r in self.conn.execute(
+                "SELECT DISTINCT role FROM member WHERE role NOT IN ('owner.me','me') ORDER BY role").fetchall()]
+            if not rows:      # 接入表空 → 退回"全部角色"
+                rows = [r[0] for r in self.conn.execute(
+                    "SELECT full_name FROM role WHERE full_name NOT IN ('owner.me','me') ORDER BY full_name").fetchall()]
+            label = "【频道广播】来自 %s #%d" % (frm, mid)
+            out = []
+            for who in rows:
+                text = "%s\n%s\n\n（回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\"）" % (
+                    label, body, mid, who)
+                try:
+                    self.deliver(who, text)
+                    self.conn.execute("INSERT OR REPLACE INTO seen(msg_id,role,seen_at) VALUES(?,?,?)",
+                                      (mid, who, now_ts())) if False else None
+                    out.append({"role": who, "delivered": True})
+                except Exception as e:
+                    out.append({"role": who, "delivered": False, "error": str(e)})
+            self.conn.commit()
+            return {"id": mid, "broadcast": True, "count": len(out), "results": out}
+
         mid = self.send(frm, role, kind, topic, body)
-        label = ("【频道广播】" if kind == "broadcast" else "【私聊】") + "来自 %s" % frm
-        text = "%s #%d\n%s\n\n（回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\"）" % (
-            label, mid, body, mid, role)
+        label = ("【频道广播】" if kind == "broadcast" else "【私聊】") + "来自 %s #%d" % (frm, mid)
+        text = "%s\n%s\n\n（回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\"）" % (
+            label, body, mid, role)
         try:
             self.deliver(role, text)
+            return {"id": mid, "delivered": True, "to": role}
         except Exception as e:
-            return {"id": mid, "delivered": False, "error": str(e)}
-        return {"id": mid, "delivered": True}
+            return {"id": mid, "delivered": False, "error": str(e), "to": role}
 
     def deliver(self, role, text, force=False):
         """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）"""
@@ -1179,7 +1203,12 @@ def main():
         print("tmux attach -t %s" % target)
     elif a.cmd == "say":
         r = t.say(a.role, a.body or a.text or "", a.topic or "私信", a.kind or "private")
-        print("#%d 已记入并投给 %s（投递%s）" % (r["id"], a.role, "成功" if r.get("delivered") else "失败：" + str(r.get("error"))))
+        if r.get("broadcast"):
+            print("#%d 广播：逐个投递 %d 人 → %s" % (r["id"], r["count"],
+                  ", ".join((x["role"] + ("✓" if x["delivered"] else "✗")) for x in r["results"])))
+        else:
+            print("#%d 已记入并投给 %s（投递%s）" % (r["id"], r.get("to", a.role),
+                  "成功" if r.get("delivered") else "失败：" + str(r.get("error"))))
     elif a.cmd == "deliver":
         body = a.text or sys.stdin.read()
         if a.id:
