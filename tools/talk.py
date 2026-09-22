@@ -607,6 +607,23 @@ class Talk:
         self.conn.commit()
         return {"full": nfull, "was": full, "scene": nsc, "name": nnm, "title": nti or "", "tags": ntg or ""}
 
+    def thread(self, role, limit=100):
+        """一对一聊天记录（面板画气泡用）：who=me 我说的 / him 他说的"""
+        out = []
+        for kind, fr, to, body, ts, mid in self.conn.execute(
+                "SELECT kind,from_role,to_role,body,created_at,id FROM v_msg WHERE"
+                " (from_role='owner.me' AND to_role=?) OR from_role=? ORDER BY id LIMIT ?",
+                (role, role, limit)).fetchall():
+            out.append({"id": mid, "who": "me" if fr == "owner.me" else "him", "body": body, "at": ts or 0})
+        try:
+            for mid, by, body, ts in self.conn.execute(
+                    "SELECT msg_id,by_role,body,created_at FROM reply WHERE by_role=? ORDER BY created_at", (role,)).fetchall():
+                out.append({"id": mid, "who": "him", "body": body, "at": ts or 0})
+        except Exception:
+            pass
+        out.sort(key=lambda x: x["at"])
+        return {"role": role, "count": len(out), "items": out}
+
     def asks_json(self):
         """还没答的授权/拍板请求 —— 面板上"谁在等你"就靠它"""
         rows = self.conn.execute(
@@ -882,7 +899,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "role-edit", "role-del", "thread"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--dry", action="store_true")
@@ -1016,6 +1033,8 @@ def main():
     elif a.cmd == "role-del":
         r = t.role_del(a.full, a.by or "owner.me", a.force)
         print("已删 %s（连带清掉 %d 条权限、%d 条接入）" % (r["deleted"], r["perms_removed"], r["members_removed"]))
+    elif a.cmd == "thread":
+        print(json.dumps(t.thread(a.role, a.lines or 100), ensure_ascii=False))
     elif a.cmd == "asks":
         print(json.dumps(t.asks_json(), ensure_ascii=False))
     elif a.cmd == "answer":
