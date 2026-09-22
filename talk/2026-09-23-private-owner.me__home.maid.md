@@ -294,3 +294,12 @@
     ② 追问刷屏（整夜 80 条【卡住】）已修并写进 SPEC：只有「派活/放行/授权/选择」四类要逐条回；控制类状态告知＝收到即读；同一件事只报一次；不追发给经理/女仆的条子。
     ③ 另一处根因：原来角色发给经理的私信不进投递队列（渲染者交活报告我 8 小时没收到），现已会投递。
     ④ 判据：nudge --dry 为空、自检 41/41、中转站 07:33:12 重启生效。
+
+[2026-09-23 07:41:13] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #851
+    角色切换：pipeline.tester → pipeline.author
+    为什么切：阶段放行：hermes-pocket-R29 第 1 步 定位根因
+    项目进度：
+    hermes-pocket-R25：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R26：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R27：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R28：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
