@@ -143,7 +143,10 @@ class Talk:
             except sqlite3.Error:
                 pass
         self.conn.commit()
-        self.admin = (role is None) or self._has("msg:all", "read")   # 看全部内容（含私信）
+        # 身份（用户 2026-09-22 定）：
+        #   me        = 本人（用户）：最高权限，看全部含私信，能直达任何角色
+        #   owner.me  = 经理（助手，代他指挥角色）：管流程，但**看不到私信内容**
+        self.admin = (role is None) or (role == "me") or self._has("msg:all", "read")   # 看全部内容（含私信）
         self.manage = self._can_manage()                              # 管理权（改名册/放行阶段/暂停）
         if role:
             self._install_guard()
