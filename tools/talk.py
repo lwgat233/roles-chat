@@ -1386,7 +1386,8 @@ def main():
                         a.topic, push=(a.dry is not True))
         print("已由女仆带话给本人：#%d（%s）推送=%s" % (r["id"], r["kind"], r["pushed"]))
     elif a.cmd == "say":
-        r = t.say(a.role, a.body or a.text or "", a.topic or "私信", a.kind or "private")
+        r = t.say(a.role, a.body or a.text or "", a.topic or "私信", a.kind or "private",
+                  frm=(a.by or "me"))   # 署名：本人(me) 或 经理(owner.me)
         if r.get("broadcast"):
             print("#%d 广播：逐个投递 %d 人 → %s" % (r["id"], r["count"],
                   ", ".join((x["role"] + ("✓" if x["delivered"] else "✗")) for x in r["results"])))
