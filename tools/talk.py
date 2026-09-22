@@ -18,6 +18,7 @@ talk.py —— 多角色对话：文本为权威 + SQLite 索引 + 角色权限�
 import argparse
 import os
 import sqlite3
+import subprocess
 import sys
 import time
 
@@ -70,6 +71,11 @@ class Talk:
         self.admin = self._is_admin()
         if role:
             self._install_guard()
+        else:
+            # 管理员/看板连接也要有同名视图（"看全部"就是条件恒真），
+            # 否则 board 这种无 --role 的调用会撞 no such table: v_msg
+            self.conn.execute("DROP VIEW IF EXISTS v_msg")
+            self.conn.execute("CREATE TEMP VIEW v_msg AS SELECT * FROM msg")
 
     # ---------- 权限 ----------
     def _is_admin(self):
@@ -161,6 +167,79 @@ class Talk:
                             ("↳ 回复 [%s] %s: %s" % (fmt(ts), from_role, body)).splitlines()))
         return ts
 
+    # ---------- 看板（他自己看：全部，含私信，带标签） ----------
+    def _rows(self):
+        return self.conn.execute(
+            "SELECT id,kind,from_role,to_role,topic,body,created_at,must_reply FROM v_msg"
+            " ORDER BY created_at").fetchall()
+
+    def board(self, limit=1000, role=None):
+        """一屏看全部对话：🔒 私信 / 📢 全体 / · default，带收发、时间、话题、必读、回复数"""
+        rows = self._rows()
+        rep = dict(self.conn.execute("SELECT msg_id, COUNT(*) FROM reply GROUP BY msg_id").fetchall())
+        out = []
+        for r in rows[-limit:]:
+            mid, kind, frm, to, topic, body, ts, must = r
+            tag = {"private": "🔒", "broadcast": "📢", "default": "· "}[kind]
+            n = rep.get(mid, 0)
+            state = ("已回%d" % n) if n else ("待回" if (must or kind in ("private", "broadcast")) else "—")
+            head = "%s#%-3d [%s] %-22s → %-22s 话题:%-12s 必读:%-2s %s" % (
+                tag, mid, fmt(ts), frm, (to or "全体"), (topic or "-"), "是" if must else "否", state)
+            out.append(head)
+            first = (body or "").splitlines()[:2]
+            for ln in first:
+                out.append("      " + ln[:150])
+        if not out:
+            out.append("（空）")
+        print("\n".join(out))
+        print("---- 共 %d 条消息（显示最近 %d 条）" % (len(rows), min(limit, len(rows))))
+
+    def tail(self, n=1000):
+        """按权限把能读的日志文件拼起来，看最后 n 行（缓冲够用的那种看法）"""
+        files = [f for f in self.visible_files() if f.endswith(".md")]
+        txt = []
+        for f in files:
+            p = os.path.join(TALK_DIR, f)
+            txt.append("===== %s =====" % f)
+            txt.extend(open(p, encoding="utf-8").read().splitlines())
+        print("\n".join(txt[-n:]))
+
+    # ---------- 投递到角色的 tmux 会话 ----------
+    @staticmethod
+    def tmux_session(role):
+        return "role-" + role.replace(".", "-")
+
+    def spawn(self, role, profile=None, cmd=None):
+        """给角色开一个 tmux 会话（他自己另开 tmux 看）"""
+        sess = self.tmux_session(role)
+        run = cmd or ("hermes -p %s chat" % profile if profile else "hermes chat")
+        subprocess.run(["tmux", "new-session", "-d", "-s", sess, "-x", "120", "-y", "40", run], check=True)
+        return sess
+
+    def deliver(self, role, text):
+        """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）"""
+        sess = self.tmux_session(role)
+        if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode != 0:
+            raise RuntimeError("角色 %s 没有会话（先 spawn）" % role)
+        buf = "rc%d" % now_ts()
+        subprocess.run(["tmux", "load-buffer", "-b", buf, "-"], input=text.encode("utf-8"), check=True)
+        subprocess.run(["tmux", "paste-buffer", "-b", buf, "-t", sess], check=True)
+        subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=True)
+        subprocess.run(["tmux", "delete-buffer", "-b", buf], check=True)
+        return sess
+
+    def capture(self, role, n=1000):
+        """看这个角色会话最近的输出（缓冲默认 1000 行）"""
+        sess = self.tmux_session(role)
+        p = subprocess.run(["tmux", "capture-pane", "-p", "-S", "-%d" % n, "-t", sess],
+                           capture_output=True, text=True)
+        return p.stdout
+
+    def mark_seen(self, msg_id, role):
+        self.conn.execute("INSERT OR REPLACE INTO seen(msg_id, role, seen_at) VALUES(?,?,?)",
+                          (msg_id, role, now_ts()))
+        self.conn.commit()
+
     # ---------- 读 ----------
     def inbox(self, role=None):
         role = role or self.role
@@ -197,8 +276,12 @@ class Talk:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["role-add", "perm-add", "send", "reply", "inbox", "search",
-                                    "files", "selftest", "roles"])
+                                    "files", "selftest", "roles", "board", "tail", "spawn", "deliver",
+                                    "capture", "seen"])
     ap.add_argument("--role", default=None)
+    ap.add_argument("--profile", default=None)
+    ap.add_argument("--lines", type=int, default=1000)
+    ap.add_argument("--text", default="")
     ap.add_argument("--full", default=None)
     ap.add_argument("--title", default="")
     ap.add_argument("--scope", default=None)
@@ -249,6 +332,24 @@ def main():
     elif a.cmd == "roles":
         for r in t.conn.execute("SELECT full_name,title FROM role ORDER BY full_name"):
             print("%s\t%s" % r)
+    elif a.cmd == "board":
+        t.board(a.lines, a.role)
+    elif a.cmd == "tail":
+        t.tail(a.lines)
+    elif a.cmd == "spawn":
+        sess = t.spawn(a.role, a.profile)
+        print("已开会话：%s（另开一个 tmux 窗口 `tmux attach -t %s` 就能看它）" % (sess, sess))
+    elif a.cmd == "deliver":
+        body = a.text or sys.stdin.read()
+        if a.id:
+            body = "【对话 #%d】%s" % (a.id, body)
+        sess = t.deliver(a.role, body)
+        print("已投递到 %s" % sess)
+    elif a.cmd == "capture":
+        sys.stdout.write(t.capture(a.role, a.lines))
+    elif a.cmd == "seen":
+        t.mark_seen(a.id, a.role)
+        print("#%d 已标已读（%s）" % (a.id, a.role))
     return 0
 
 

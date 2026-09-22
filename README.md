@@ -26,18 +26,41 @@ TEMP 视图 `v_msg`；名册/权限表只有管理员角色能改（`not authori
 
 ## 常用命令
 ```bash
+# 角色与权限
 python3 tools/talk.py role-add --full pipeline.author --title 功能创造者
 python3 tools/talk.py perm-add --role pipeline.auditor --scope msg:all --action read
-python3 tools/talk.py send  --role pipeline.author --from pipeline.author --to 全体 \
+
+# 发消息（三类：default 不看权限谁都可见 / broadcast 全体 / private 私信）
+python3 tools/talk.py send --role pipeline.author --from pipeline.author --to 全体 \
         --kind broadcast --topic 公告 --must-reply --body "……"
-python3 tools/talk.py send  --role pipeline.author --from pipeline.author --to pipeline.tester \
+python3 tools/talk.py send --role pipeline.author --from pipeline.author --to pipeline.tester \
         --kind private --topic 交接 --body "……"
+python3 tools/talk.py reply --id 3 --from pipeline.tester --body "收到，判据已加"
+
+# **他看的一屏**（CLI 优先）：三类带标签、带收发/时间/话题/必读/待回
+python3 tools/talk.py board                 # 全部（含私信，只有他能这么看）
+python3 tools/talk.py board --role pipeline.tester   # 某个角色能看到的那些
+python3 tools/talk.py tail --lines 1000     # 按权限拼日志文件，看最后 1000 行
+
+# 角色跑在 tmux 会话里（他自己另开 tmux 看）
+python3 tools/talk.py spawn  --role pipeline.tester [--profile tester]
+python3 tools/talk.py deliver --role pipeline.tester --id 3 --text "请处理这条"
+python3 tools/talk.py capture --role pipeline.tester --lines 1000    # 抓它最近的输出
+
+# 其它
 python3 tools/talk.py inbox  --role pipeline.tester
-python3 tools/talk.py search --role pipeline.tester --q 判据
 python3 tools/talk.py files  --role pipeline.tester      # 这个角色有权读的日志文件
 python3 tools/talk.py selftest                           # 20 条判据 → evidence/
 python3 tools/exp_index.py must --role pipeline.author    # 说身份后必须先读的
 ```
+
+## 跑法（CLI 优先，2026-09-22 用户定）
+- **每个角色一个 tmux 会话**（`spawn` 开，名字 `role-<场景>-<角色>`；命令默认 `hermes -p <profile> chat`）——
+  他在另一个 tmux 窗口 `tmux attach -t role-xxx` 或 `capture` 看它们，缓冲看千行足够。
+- **投递**用 `deliver`（`load-buffer` + `paste-buffer` + `Enter`，多行也不会被换行弄坏）。
+- **回复**让角色自己用工具写回（`talk.py reply`），**不靠抓屏猜**；抓屏只用于你旁观。
+- 提醒角色去看消息的那句话（Routine/cron 或手工投递）：
+  `先跑 talk.py inbox --role <我>，把等我回的（尤其 必读:是）处理掉，再用 talk.py reply --id N 回话。`
 
 ## 规矩
 - 一个角色 = 一个会话（开场自报全名）；**角色之间不直接对话**，一律通过 `talk/` 日志（可检索、跨 session 能接上）。
