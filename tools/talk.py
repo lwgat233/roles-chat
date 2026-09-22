@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS stage(
 CREATE TABLE IF NOT EXISTS session(
   id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, name TEXT, role TEXT, tmux TEXT, hermes TEXT,
   created_at INTEGER, last_used INTEGER, note TEXT);
+-- 键值设置（qq 目标、女仆频道等）
+CREATE TABLE IF NOT EXISTS setting(k TEXT PRIMARY KEY, v TEXT, updated_at INTEGER);
+-- 该不该通知他（角色标注）+ 推没推过（女仆中转用）
+CREATE TABLE IF NOT EXISTS notify(msg_id INTEGER PRIMARY KEY, marked_at INTEGER, pushed_at INTEGER, channel TEXT);
 """
 
 
@@ -450,7 +454,8 @@ class Talk:
         """把一套系统建起来：库表 + 经理 + 本场景的三个角色（幂等，可反复跑）"""
         self.init_owner(owner)
         for full, title in [("pipeline.author", "功能创造者"), ("pipeline.renderer", "渲染者"),
-                            ("pipeline.tester", "测试者")]:
+                            ("pipeline.tester", "测试者"),
+                            ("home.maid", "可爱女仆（个人助手：管生活，把要紧的话中转给我）")]:
             self.conn.execute("INSERT OR REPLACE INTO role(full_name,scene,name,title,created_at) VALUES(?,?,?,?,?)",
                               (full, full.split(".")[0], full.split(".")[1], title, now_ts()))
         self.conn.commit()
@@ -513,6 +518,49 @@ class Talk:
         return {"last": (rows[-1][0] if rows else after_id), "messages": [
             {"id": r[0], "kind": r[1], "from": r[2], "to": r[3], "topic": r[4],
              "body": r[5], "at": r[6], "must_reply": bool(r[7])} for r in rows]}
+
+    def setting_get(self, k, default=None):
+        r = self.conn.execute("SELECT v FROM setting WHERE k=?", (k,)).fetchone()
+        return r[0] if r else default
+
+    def setting_set(self, k, v):
+        self.conn.execute("INSERT OR REPLACE INTO setting(k,v,updated_at) VALUES(?,?,?)", (k, v, now_ts()))
+        self.conn.commit()
+
+    def mark_notify(self, msg_id):
+        """角色标一句"这句要让他知道" —— 女仆会把它中转给他（QQ 那条专属对话）"""
+        self.conn.execute("INSERT OR REPLACE INTO notify(msg_id,marked_at,pushed_at,channel)"
+                          " VALUES(?,?,NULL,NULL)", (msg_id, now_ts()))
+        self.conn.commit()
+
+    def relay(self, target=None, dry=False, limit=20):
+        """女仆的活：把"标了要通知他、还没推过"的话整理成固定格式推给他（默认 QQ 专属对话）。
+        格式：谁 → 什么事 → 要你决定什么 → 什么时候要。dry=True 只打印不发。"""
+        tgt = target or self.setting_get("qq_target") or ""
+        rows = self.conn.execute(
+            "SELECT m.id,m.from_role,m.to_role,m.topic,m.body,m.created_at FROM v_msg m"
+            " JOIN notify n ON n.msg_id=m.id WHERE n.pushed_at IS NULL ORDER BY m.id LIMIT ?",
+            (limit,)).fetchall()
+        if not rows:
+            return 0, tgt, ""
+        parts = ["【角色频道 · 女仆转达】"]
+        for mid, frm, to, topic, body, ts in rows:
+            head = "· #%d %s（%s）" % (mid, frm, fmt(ts))
+            parts.append(head)
+            if topic:
+                parts.append("  话题：%s" % topic)
+            for ln in (body or "").splitlines():
+                parts.append("  " + ln)
+        text = "\n".join(parts)
+        if not dry:
+            if not tgt:
+                raise RuntimeError("还没设 qq 目标：talk.py setting set qq_target qqbot:<id>")
+            subprocess.run(["hermes", "send", "-t", tgt, text], check=True)
+            for mid, *_ in rows:
+                self.conn.execute("UPDATE notify SET pushed_at=?, channel=? WHERE msg_id=?",
+                                  (now_ts(), tgt, mid))
+            self.conn.commit()
+        return len(rows), tgt, text
 
     def watch(self, poll=1.0, once=False, since=None):
         """实时跟随：新消息一出现就打印（他本人＝带 🔒 的私信也看得到；带 --role 就是那个角色有权看的）
@@ -582,9 +630,10 @@ def main():
                                     "capture", "seen", "init-owner", "pause", "start", "status",
                                     "stage-add", "gate", "gate-open", "gate-done", "report", "blocked",
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
-                                    "attach", "since-json"])
+                                    "attach", "since-json", "setting", "notify", "relay"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
+    ap.add_argument("--dry", action="store_true")
     ap.add_argument("--poll", type=float, default=1.0)
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--by", default=None)
@@ -687,6 +736,20 @@ def main():
         print("%s：%s" % (a.role, b or "可以收活（没被阶段卡住）"))
     elif a.cmd == "since-json":
         print(json.dumps(t.since_json(a.id or 0), ensure_ascii=False))
+    elif a.cmd == "setting":
+        if a.text:
+            t.setting_set(a.name, a.text)
+            print("已设 %s = %s" % (a.name, a.text))
+        else:
+            print("%s = %s" % (a.name, t.setting_get(a.name) or "(没设)"))
+    elif a.cmd == "notify":
+        t.mark_notify(a.id)
+        print("#%d 已标：要她知道（女仆中转时会带上）" % a.id)
+    elif a.cmd == "relay":
+        n, tgt, text = t.relay(a.text or None, a.dry)
+        print("中转 %d 条 → %s%s" % (n, tgt or "(没设目标)", "（dry-run 只打印不发）" if a.dry else ""))
+        if text:
+            print(text)
     elif a.cmd == "watch":
         t.watch(a.poll, a.once)
     elif a.cmd == "init":

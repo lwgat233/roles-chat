@@ -96,6 +96,31 @@ python3 tools/talk.py gate-done --project <P> --seq 1 --by owner.me # 判定完�
 `roles-json`（按钮列表与角标）、`watch`（消息流）、`send --kind private --to <角色>` + `deliver`（对某个角色说话）、
 `send --kind broadcast`（全体）、`inbox --role <角色>`（看他要回什么）、`sessions-json`（历史）、`solo`（新对话）。
 
+## 可爱女仆 与 QQ 专属对话（用户 2026-09-22 定）
+
+- **角色**：`home.maid` —— **可爱女仆**（个人助手）。管他的生活；与经理（`owner.me`）对接；
+  **把要紧的话中转给他**。面板上她在 `home` 场景里（和其他角色一样一个按钮）。
+- **谁想对他说话**：不用直接推给他 —— 角色把话发给女仆（`send --to home.maid --kind private`），
+  或在自己那条消息上标一句"要她知道"：
+  `talk.py notify --id <消息号>`
+- **中转格式**（女仆推给他时固定这样）：
+  ```
+  【角色频道 · 女仆转达】
+  · #103 pipeline.author（2026-09-22 20:13:56）
+    话题：要你拍板
+    要你决定：现在拍还是等下周
+    什么时候要：今天
+  ```
+- **推到哪里**：**钉死一条 QQ 专属对话**（现在用他的 QQ 一对一 dm）：
+  ```bash
+  talk.py setting --name qq_target --text "qqbot:3FDE0CB3E30CD63FC5C635B4C657C844"
+  talk.py relay            # 真的推（调 hermes send -t <qq_target>）
+  talk.py relay --dry      # 只打印不发，先看格式
+  ```
+- **不会重复推**：`notify(msg_id, marked_at, pushed_at, channel)` 记着推没推过 —— 推过就不再出现。
+- 想换频道（比如专门开一个 QQ 群当女仆频道）：`setting --name qq_target --text "qqbot:<群 id>"`，
+  `hermes send -l` 会列出当前可用的目标。
+
 ## 与 hermes-pocket 的对接（下一步，本项目的一部分）
 
 hermes-pocket 是 WebView + 原生 SSH 的移动终端壳，连单个会话是它的强项。要在它上面加：
