@@ -424,11 +424,15 @@ class Talk:
             subprocess.run(["tmux", "send-keys", "-t", target, "Enter"], check=True, capture_output=True)
         except Exception as e:
             return {"sent": False, "why": "发不进去：%s" % e, "to": target, "by": by}
-        time.sleep(1.2)   # 给对端一点时间把输出打出来，不然"证据"里只有提示符
-        pane = subprocess.run(["tmux", "capture-pane", "-p", "-t", target, "-S", "-12"], capture_output=True, text=True)
-        tail = [l.strip() for l in (pane.stdout or "").splitlines() if l.strip()][-2:]
-        return {"sent": True, "to": target, "by": by, "role": self.role_of_target(target),
-                "why": why, "他屏上的最后两行": tail}
+        time.sleep(1.2)   # 给对端一点时间把输出打出来
+        pane = subprocess.run(["tmux", "capture-pane", "-p", "-t", target, "-S", "-40"], capture_output=True, text=True)
+        body = pane.stdout or ""
+        lines = [l.rstrip() for l in body.splitlines()]
+        while lines and not lines[-1].strip():
+            lines.pop()
+        seen = txt.splitlines()[-1] in body if txt else False
+        return {"sent": True, "to": target, "by": by, "role": self.role_of_target(target), "why": why,
+                "他屏上看到了": seen, "末尾几行": lines[-3:]}
 
     def role_bind(self, role, target):
         """把角色绑到一个已存在的 session 上（改了它就固定用这个回答）。"""
