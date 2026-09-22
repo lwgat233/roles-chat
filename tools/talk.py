@@ -91,6 +91,21 @@ def log_path(kind, from_role, to_role, day=None):
 TMUX_SESSION = "roles"          # 只用一个 tmux 会话；每个角色是里面的一个窗口（省后台、切换不用敲命令）
 
 
+def hermes_bin():
+    """找到 hermes 可执行文件：非交互环境下 PATH 里没有它，得自己找"""
+    import shutil
+    for c in (shutil.which("hermes"),
+              os.path.expanduser("~/.local/bin/hermes"),
+              os.path.expanduser("~/.hermes/hermes-agent/venv/bin/hermes"),
+              "/usr/local/bin/hermes"):
+        if c and os.path.exists(c):
+            return c
+    return "hermes"
+
+
+HERMES_BIN = hermes_bin()
+
+
 def win_name(role):
     """角色 → 窗口名：home.maid → home-maid"""
     return str(role or "").replace(".", "-")
@@ -917,7 +932,7 @@ class Talk:
         if not dry:
             if not tgt:
                 raise RuntimeError("还没设 qq 目标：talk.py setting set qq_target qqbot:<id>")
-            subprocess.run(["hermes", "send", "-t", tgt, text], check=True)
+            subprocess.run([HERMES_BIN, "send", "-t", tgt, text], check=True)
             for mid, *_ in rows:
                 self.conn.execute("UPDATE notify SET pushed_at=?, channel=? WHERE msg_id=?",
                                   (now_ts(), tgt, mid))
