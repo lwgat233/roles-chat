@@ -505,6 +505,15 @@ class Talk:
         self.conn.commit()
         return n, r
 
+    def since_json(self, after_id=0, limit=200):
+        """给面板轮询用：id 大于 after_id 的新消息（面板每隔一两秒问一次，不用长连接）"""
+        rows = self.conn.execute(
+            "SELECT id,kind,from_role,to_role,topic,body,created_at,must_reply FROM v_msg"
+            " WHERE id > ? ORDER BY id LIMIT ?", (after_id, limit)).fetchall()
+        return {"last": (rows[-1][0] if rows else after_id), "messages": [
+            {"id": r[0], "kind": r[1], "from": r[2], "to": r[3], "topic": r[4],
+             "body": r[5], "at": r[6], "must_reply": bool(r[7])} for r in rows]}
+
     def watch(self, poll=1.0, once=False, since=None):
         """实时跟随：新消息一出现就打印（他本人＝带 🔒 的私信也看得到；带 --role 就是那个角色有权看的）
         公开频道刷新 / pocket 的频道面板就跑这一条。游标按 **id** 走（时间戳是秒级的，会重复刷同一条）。"""
@@ -573,7 +582,7 @@ def main():
                                     "capture", "seen", "init-owner", "pause", "start", "status",
                                     "stage-add", "gate", "gate-open", "gate-done", "report", "blocked",
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
-                                    "attach"]) 
+                                    "attach", "since-json"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--poll", type=float, default=1.0)
@@ -676,6 +685,8 @@ def main():
     elif a.cmd == "blocked":
         b = t.blocked_reason(a.role)
         print("%s：%s" % (a.role, b or "可以收活（没被阶段卡住）"))
+    elif a.cmd == "since-json":
+        print(json.dumps(t.since_json(a.id or 0), ensure_ascii=False))
     elif a.cmd == "watch":
         t.watch(a.poll, a.once)
     elif a.cmd == "init":
