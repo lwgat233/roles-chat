@@ -111,6 +111,18 @@ def win_name(role):
     return str(role or "").replace(".", "-")
 
 
+def exists_target(target):
+    """这个 tmux 目标（会话或 会话:窗口）真的存在吗"""
+    tgt = str(target or "")
+    if ":" in tgt:
+        sess, win = tgt.split(":", 1)
+        out = subprocess.run(["tmux", "list-windows", "-t", sess, "-F", "#{window_name}"], capture_output=True, text=True)
+        if out.returncode != 0:
+            return False
+        return win in (out.stdout or "").split()
+    return subprocess.run(["tmux", "has-session", "-t", tgt], capture_output=True).returncode == 0
+
+
 def ensure_tmux_session():
     if subprocess.run(["tmux", "has-session", "-t", TMUX_SESSION], capture_output=True).returncode != 0:
         subprocess.run(["tmux", "new-session", "-d", "-s", TMUX_SESSION], check=True)
@@ -366,12 +378,45 @@ class Talk:
         self.conn.commit()
         return full
 
-    # ---------- 投递到角色的 tmux 会话 ----------
-    @staticmethod
-    def tmux_session(role):
-        return "role-" + role.replace(".", "-")
+    # ---------- 投递到角色的 tmux 会话（**唯一的漏斗**：绑定优先，没绑就用默认窗口） ----------
+    def tmux_session(self, role):
+        """角色绑了哪个 session 就用哪个（固定死）；没绑就用默认窗口 roles:<名字>。"""
+        try:
+            r = self.conn.execute("SELECT bind FROM role WHERE full_name=?", (role,)).fetchone()
+            if r and r[0]:
+                return r[0]
+        except Exception:
+            pass          # 老库还没有 bind 列：退回默认，不许因此崩
+        return "roles:" + win_name(role)
+
+    def role_bind(self, role, target):
+        """把角色绑到一个已存在的 session 上（改了它就固定用这个回答）。"""
+        r = self.conn.execute("SELECT full_name FROM role WHERE full_name=?", (role,)).fetchone()
+        if not r:
+            return {"ok": False, "why": "没有这个角色：%s" % role}
+        target = (target or "").strip()
+        if not target:
+            return {"ok": False, "why": "要绑的 session 名字给少了"}
+        if not exists_target(target):
+            return {"ok": False, "why": "没有这个会话：%s（先 tmux list-sessions 看看）" % target}
+        self.conn.execute("UPDATE role SET bind=? WHERE full_name=?", (target, role))
+        self.conn.commit()
+        return {"ok": True, "role": role, "bind": target, "verified": self.tmux_session(role) == target}
+
+    def role_unbind(self, role):
+        self.conn.execute("UPDATE role SET bind=NULL WHERE full_name=?", (role,))
+        self.conn.commit()
+        return {"ok": True, "role": role, "bind": None, "now": self.tmux_session(role)}
 
     # ---------- 面板要的料：角色（按场景分组）+ 会话历史 + "只对我负责"的单独会话 ----------
+
+    def ensure_schema(self):
+        """补列（老库升级）：role.bind = 这个角色固定用哪个 session 回答。"""
+        cols = [r[1] for r in self.conn.execute("PRAGMA table_info(role)")]
+        if "bind" not in cols:
+            self.conn.execute("ALTER TABLE role ADD COLUMN bind TEXT")
+            self.conn.commit()
+        return True
 
     def _remember(self, kind, name, role, tmux, hermes, note=""):
         r = self.conn.execute("SELECT id FROM session WHERE tmux=?", (tmux,)).fetchone()
