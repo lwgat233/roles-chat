@@ -1975,7 +1975,6 @@ def main():
     ap.add_argument("--json", dest="json", action="store_true",
                     help="budget 用：输出 JSON（给程序读）")
     ap.add_argument("--rollover", action="store_true", help="预算：重打今日基线（同日不重打）")
-    ap.add_argument("--force", action="store_true", help="预算：连同日也强制重打（危险：会把当日清零）")
     ap.add_argument("--minutes", type=int, default=45,
                     help="逾期追问阈值（分钟，默认 45）")
     ap.add_argument("--max", type=int, default=2,
