@@ -1076,6 +1076,25 @@ class Talk:
             out.append(l.strip("│| "))
         return "\n".join([x for x in out if x]).strip()
 
+    def _relay_note(self, mid, topic):
+        """女仆给转发正文写的注释：这条要不要本人动手。"""
+        t = topic or ""
+        if t.startswith("【卡住"):
+            return "卡住，需要处理（经理在跟）"
+        if t.startswith("【告知") or t.startswith("【进度"):
+            return "告知类，不用回"
+        if t.startswith("报告"):
+            return "阶段报告，经理判定中"
+        try:
+            mr = self.conn.execute("SELECT COALESCE(must_reply,0) FROM msg WHERE id=?", (mid,)).fetchone()
+            ans = self.conn.execute("SELECT COALESCE(answered_at,0) FROM notify WHERE msg_id=?",
+                                    (mid,)).fetchone()
+            if mr and mr[0] == 1:
+                return "在等你回话" if not (ans and ans[0]) else "你已回过话"
+        except Exception:
+            pass
+        return "只告知，不用回"
+
     def relay_once(self, cursor=None, deliver=True, collect=True):
         """跑一轮：① 把新消息投给该收的人（带种类标签）② 把角色的终端回答收成记录"""
         cur = cursor if cursor is not None else int(self.state_get("relay_cursor", "0") or 0)
@@ -1445,14 +1464,15 @@ class Talk:
             (limit,)).fetchall()
         if not rows:
             return 0, tgt, ""
-        parts = ["【角色频道 · 女仆转达】"]
+        parts = ["【女仆转发 · 正文未改】"]
         for mid, frm, to, topic, body, ts in rows:
-            head = "· #%d %s（%s）" % (mid, frm, fmt(ts))
-            parts.append(head)
+            parts.append("· #%d %s → %s（%s）" % (mid, frm, to or "全体", fmt(ts)))
             if topic:
                 parts.append("  话题：%s" % topic)
             for ln in (body or "").splitlines():
                 parts.append("  " + ln)
+            # 女仆的注释：这条对本人意味着什么（本人 2026-09-23 要求"女仆要对文本注释"）
+            parts.append("  〔女仆注〕%s" % self._relay_note(mid, topic))
         text = "\n".join(parts)
         if not dry:
             if not tgt:

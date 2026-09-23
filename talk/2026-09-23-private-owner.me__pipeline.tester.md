@@ -105,3 +105,24 @@
     细节按重要性递减、只给读数；原始输出仍进证据文件（给路径+哈希前 12 位），对话里不贴。
     末行成本：调用 N 次 · 输入 X · 输出 Y · 缓存读 Z · ≈¥W（¥=美元估×7.2）。
     含标题**整条 ≤8 行**（report() 会强校验：标题 + 成本行 + ≤8 行）。旧写法仍收，但你手上的必读经验已同步，下次交活按新的写。
+
+[2026-09-23 08:26:33] owner.me → pipeline.tester | 全体? 否 | 话题:【派活】hermes-pocket-R26 第 3 步 复测 | 必读:是 | #1019
+    接 hermes-pocket-R26 第 3 步「复测」（renderer 出的包，第 2 步已判过）。
+    
+    对象：/vol1/1000/airesults/hermes-pocket/apk/测试版/hermes-pocket-R26-本地存储-20260923.apk
+    · 整包 sha256：407a23270b93bafc087412990bb04bac5ffda8dee8fe97fac0588cb2570d231e（先对上再装）
+    · 包内 assets/build-info.json：testVersion=unified-20260923-082501、builtAt=2026-09-23 08:25 CST、featureId=R-26
+    · 包内 assets/ui/talk.js sha256：d9a7c8ff6c7bb5160ee598859310743ed65c43c5ab8428d836d8e5200cd90333
+    · 包内 assets/ui/cache.js sha256：182045b4fc4a4ea4b531e6581f32785476ccdb276292e5266a0a200c01173241
+    
+    要真机量的（renderer 本地台已跑过等效读数，你出设备那部分）：
+    ① 容量上限：撑到 200 条只落 50 条（cacheMaxItems 生效）；
+    ② 落盘节流：连重画 10 次真落盘次数（应合并成 1 次）；
+    ③ 清理：清掉 2 个键后占用读数变化（56.4KB→55.5KB 那个口径）；
+    ④ 满配额行为：改成一次提示 + 降级不再抛（不出现未捕获异常）；
+    ⑤ 设置页能读回「现在占多少」；占用卡在原生侧 app.storage 未做时**如实显示「暂不可用」**（别当通过，也别当失败）；
+    ⑥ 真机配额与 spill 实况（这是 renderer 没测到的部分）；⑦ 无回归：R-29 钉底 / R-31 发送状态探针照跑；⑧ 0 pageerror / console.error。
+    
+    口径：本轮**不接主机**（接主机那几条照旧记「未验≠通过」）；未验 ≠ 通过、暂不可用同样照实写。
+    交付（新闻格式：标题带数字 + 导语 + 细节 + 成本行，≤8 行）：
+    python3 tools/talk.py report --project hermes-pocket-R26 --seq 3 --from pipeline.tester --text "…"

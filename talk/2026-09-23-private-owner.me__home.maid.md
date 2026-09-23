@@ -476,3 +476,30 @@
     细节按重要性递减、只给读数；原始输出仍进证据文件（给路径+哈希前 12 位），对话里不贴。
     末行成本：调用 N 次 · 输入 X · 输出 Y · 缓存读 Z · ≈¥W（¥=美元估×7.2）。
     含标题**整条 ≤8 行**（report() 会强校验：标题 + 成本行 + ≤8 行）。旧写法仍收，但你手上的必读经验已同步，下次交活按新的写。
+
+[2026-09-23 08:25:13] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1005
+    【完成】hermes-pocket-R31 第 3 步「复测」判定完成
+    进度：R31：3/3 · 已收尾
+
+[2026-09-23 08:25:56] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1008
+    【完成】hermes-pocket-R29 第 4 步「按复测结果修」判定完成
+    进度：R29：4/6 · 等 5 实现与出包(renderer)
+
+[2026-09-23 08:25:56] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1010
+    【切换】author 接手：阶段放行：hermes-pocket-R27 第 1 步 定位根因
+    pipeline.author → pipeline.author，接下来由 author 干；项目只列刚动的这条。
+    进度：R27：0/3 · 当前 1 定位根因(author)
+
+[2026-09-23 08:26:33] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1013
+    【完成】hermes-pocket-R26 第 2 步「实现与出包」判定完成
+    进度：R26：2/3 · 等 3 复测(tester)
+
+[2026-09-23 08:26:33] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1015
+    【切换】renderer 接手：阶段放行：hermes-pocket-R29 第 5 步 实现与出包
+    pipeline.author → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：R29：4/6 · 当前 5 实现与出包(renderer)
+
+[2026-09-23 08:26:33] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1017
+    【切换】tester 接手：阶段放行：hermes-pocket-R26 第 3 步 复测
+    pipeline.renderer → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
+    进度：R26：2/3 · 当前 3 复测(tester)
