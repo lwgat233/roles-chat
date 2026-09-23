@@ -8,7 +8,30 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import subprocess  # noqa: E402
 import talk  # noqa: E402
+
+
+def _relay_isolate(on):
+    """自检隔离：跑自检前停掉常驻中转站，跑完起回来。
+
+    不隔离会出事（2026-09-23 实测）：自检会造一条假「报告」消息，
+    常驻中转站把它当真的投给经理/角色窗口 —— 经理会收到一条 selftest 的假报告。
+    """
+    try:
+        if on:
+            st = subprocess.run(["systemctl", "--user", "is-active", "roles-relay.service"],
+                                capture_output=True, text=True).stdout.strip()
+            if st == "active":
+                subprocess.run(["systemctl", "--user", "stop", "roles-relay.service"],
+                               capture_output=True, timeout=20)
+                return True
+            return False
+        subprocess.run(["systemctl", "--user", "start", "roles-relay.service"],
+                       capture_output=True, timeout=20)
+    except Exception:
+        pass
+    return False
 
 ROOT = talk.ROOT
 EVID = os.path.join(ROOT, "evidence")
@@ -23,6 +46,7 @@ def check(name, ok, got=""):
 
 def run():
     os.makedirs(EVID, exist_ok=True)
+    _relay_stopped = _relay_isolate(True)   # 隔离：自检期间别让常驻中转站把假消息投出去
     admin = talk.Talk(None)
     ids = []
     files = []
@@ -203,6 +227,8 @@ def run():
         left = admin.conn.execute("SELECT COUNT(*) FROM msg WHERE topic LIKE ? OR body LIKE ?",
                                   ("%" + WORD + "%", "%" + WORD + "%")).fetchone()[0]
         check("收尾：测试消息清掉了", left == 0, left)
+        if _relay_stopped:
+            _relay_isolate(False)
         for p in files:
             try:
                 if os.path.exists(p) and not open(p, encoding="utf-8").read().replace(WORD, "").strip():

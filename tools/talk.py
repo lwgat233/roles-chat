@@ -649,6 +649,10 @@ class Talk:
             raise ValueError("交付格式不合格，缺：%s（格式见 README）" % "、".join(missing))
         feat = "%s#%d" % (project, seq)
         mid = self.send(from_role, None, "default", "报告 %s" % feat, body, feature=feat)
+        # 自检/演练造的假报告**不推给任何人**：跑一次自检就多一条 selftest 报告落到经理窗口
+        # （2026-09-23 实测：报告刚改成"必须送进经理会话"后，自检立刻往我窗口灌假报告）。
+        if str(project).startswith("selftest") or os.environ.get("ROLES_CHAT_NO_REPORT_PUSH") == "1":
+            return mid
         # 交付报告也是"他要知道的进度"：自动标上要通知，女仆会在下一批（默认 5 分钟）转达给他。
         # 之前只走 default 消息不标记 → 报告躺在频道里没人推给他（用户问过"怎么不上报"）。
         self.mark_notify(mid)
@@ -1066,8 +1070,9 @@ class Talk:
             # **交付报告必须送到经理窗口**：relay_targets 的兜底名单里没有 owner.me，
             # 只把报告算进"候选"是不够的（2026-09-23 踩过：#863 有候选、无收件人，
             # 结果「报告躺在看板上、经理不知道、队伍空转」）。
-            if str(topic).startswith("报告") and "owner.me" not in targets:
-                targets.append("owner.me")
+            if str(topic).startswith("报告") and "selftest" not in str(topic) \
+                    and "owner.me" not in targets:
+                targets.append("owner.me")   # 自检造的假报告别投给经理（跑自检时会往库里写一条）
             for who in targets:
                 text = "%s\n%s\n\n（回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\"；直接在这里说也行）" % (
                     label, body, mid, who)
