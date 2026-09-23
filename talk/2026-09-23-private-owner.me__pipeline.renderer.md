@@ -28,3 +28,23 @@
 
 [2026-09-23 07:49:45] owner.me → pipeline.renderer | 全体? 否 | 话题:【告知】交付格式更新：报告 ≤15 行 + 成本用人民币 | 必读:否 | #869
     交付格式更新（本人 2026-09-23 定，立即生效），重读必读经验「省token与每次任务记token.md」：报告 ≤15 行、判据只给数字+结论、原文进证据文件；末行成本改人民币 ≈¥W（¥ = 美元估 × cny_per_usd，默认 7.2）。没派活就不用回、也不用动，重读即可。
+
+[2026-09-23 08:10:25] owner.me → pipeline.renderer | 全体? 否 | 话题:【派活】hermes-pocket-R29 第 2 步 实现与出包 | 必读:是 | #885
+    接 hermes-pocket-R29 第 2 步「实现与出包」（作者的定位报告 #863 已判过，第 1 步完成）。
+    
+    照作者的根因与方案做（证据文件里有全文，别重读大文件）：
+    · 证据：evidence/R29-定位-20260923/R-29-定位-原始输出.txt（含读到的文件与行、探针 JSON、7 条判据、实现建议、配方位置）
+    · 根因一句话：钉底只做在**单聊**那条路（talk.js:884），**群聊那条路一处都没有**（新消息到达的 paintStream、切栏目的 paintGroup 都不设 scrollTop，且全文没有"在不在底部/用户有没有上翻"的状态）
+    · 要做的：pinBottom 统一入口 + 只追加不整块重建 + 「⇣ 回到底部（新 N 条）」入口；**保住**"用户手动上翻后不被抢回"这条既有行为
+    
+    出包配方（照作者给的）：
+    bash tools/build.sh --name "R29-群聊钉底" --feature "…" --feature-id "R-29"
+    （build.sh + stamp-build.py：盖章 → 核对 → gradle → 包内对账 → 归档 apk/测试版/；复核 stamp-build.py --verify <apk>）
+    
+    交付（≤15 行，四行 + 成本行，缺行会被拒）：
+    python3 tools/talk.py report --project hermes-pocket-R29 --seq 2 --from pipeline.renderer --text "做了什么:… 证据:… 判据:… 依赖:… 本次任务:调用 N 次 · 输入 X · 输出 Y · 缓存读 Z · ≈¥W"
+    判据要给：产物路径 + 整包 sha256 + 包内 build-info.json 读数 + 包内 ui/talk.js sha256；本地测试台能跑的先跑（真点由 tester 做）。
+    
+    口径：本轮**不接主机**（不动 NAS 的 authorized_keys），未验 ≠ 通过；只做界面/出包，不改功能逻辑。
+    依赖：你出包交报告 → 我 gate-done 第 2 步 → 放行第 3 步「复测」给 tester。
+    ↳ 回复 [2026-09-23 08:10:33] pipeline.renderer: 收到，接下 R29 第 2 步「实现与出包」。按作者定位做 pinBottom 统一入口 + 只追加不整块重建 + ⇣ 回到底部（新 N 条），保住手动上翻不被抢回；只动界面，不改功能逻辑；本地能跑的测试台先跑，真点留给 tester。出包用 bash tools/build.sh --name R29-群聊钉底 --feature-id R-29，复核 stamp-build.py --verify。完事按 ≤15 行报告（含末行成本）交回。

@@ -326,3 +326,29 @@
     2) 末行成本改**人民币**：本次任务：调用 N 次 · 输入 X · 输出 Y · 缓存读 Z · ≈¥W（¥ = 美元估 × cny_per_usd，默认 7.2，在 talk.db 的 setting.cny_per_usd）。
     格式权威出处 = roles-chat/README.md 的交付格式段（SPEC §7 已对齐）。
     现在没有派给你的活，按静默纪律不用回、也不用动，重读即可。
+
+[2026-09-23 08:10:20] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #880
+    hermes-pocket-R29 第 1 步「定位根因」已判定完成。
+    项目进度：
+    hermes-pocket-R25：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R26：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R27：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R28：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+
+[2026-09-23 08:10:24] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #882
+    角色切换：pipeline.author → pipeline.renderer
+    为什么切：阶段放行：hermes-pocket-R29 第 2 步 实现与出包
+    项目进度：
+    hermes-pocket-R25：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R26：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R27：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R28：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+
+[2026-09-23 08:10:25] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #884
+    角色切换：pipeline.renderer → pipeline.author
+    为什么切：阶段放行：hermes-pocket-R31 第 1 步 定位根因
+    项目进度：
+    hermes-pocket-R25：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R26：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R27：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R28：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）

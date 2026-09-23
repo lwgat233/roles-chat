@@ -652,6 +652,18 @@ class Talk:
         # 交付报告也是"他要知道的进度"：自动标上要通知，女仆会在下一批（默认 5 分钟）转达给他。
         # 之前只走 default 消息不标记 → 报告躺在频道里没人推给他（用户问过"怎么不上报"）。
         self.mark_notify(mid)
+        # 报告是交给经理的活：**必须送进经理的会话**，不然阶段不推进（2026-09-23 实测：作者 07:44 交的 #863
+        # 只有 home.maid 的投递行、经理会话里查无此条 → 阶段卡死、角色按静默纪律干等，用户问"怎么都没干活"）。
+        who = self.setting_get("report_to") or "owner.me"
+        ok, note = 1, ""
+        try:
+            self.deliver(who, "【报告】%s\n%s\n\n（判完用：python3 tools/talk.py gate-done --project %s --seq %d --by %s）"
+                         % (feat, body, project, seq, who))
+        except Exception as e:
+            ok, note = 0, "报告投递失败: %s" % e
+        self.conn.execute("INSERT OR REPLACE INTO delivery(msg_id,role,at,ok,note) VALUES(?,?,?,?,?)",
+                          (mid, who, now_ts(), ok, note))
+        self.conn.commit()
         return mid
 
     HERMES = "/home/lwgat/.hermes/hermes-agent/venv/bin/hermes"
@@ -1037,11 +1049,11 @@ class Talk:
             #              于是「他报告交完了、经理不知道」：门铃不响，最长干等了 8 小时）
             #           ③ **交付报告**（topic 报告 <项目#步>，kind=default 没有收件人）——
             #              报告是给经理判阶段用的，必须叫醒经理，不能只躺在看板上
-            "SELECT id,kind,from_role,to_role,scope,body FROM v_msg WHERE id>?"
+            "SELECT id,kind,from_role,to_role,scope,body,COALESCE(topic,'') FROM v_msg WHERE id>?"
             " AND (from_role IN ('me','owner.me','home.maid') OR to_role IN ('owner.me','me')"
             "      OR topic LIKE '报告%')"
             " ORDER BY id", (cur,)).fetchall()
-        for mid, kind, frm, to_role, scope, body in rows:
+        for mid, kind, frm, to_role, scope, body, topic in rows:
             if not deliver:
                 sent.append({"id": mid, "skipped": True})
                 continue
@@ -1049,9 +1061,14 @@ class Talk:
             # 转告/结论类（【告知/【决定/【纠正/【已解决/【收工/【进度/【卡住】与「控制」状态告知）
             # **不受阶段闸门拦**：它们不是派活，收件人读到即可（照静默纪律也不许据此动手）。
             # 不这样分，就会出现「闸门锁住的人连"你的经验改了、重读"都收不到」（2026-09-23 踩过）。
-            notice = str(self.conn.execute("SELECT COALESCE(topic,'') FROM msg WHERE id=?", (mid,)).fetchone()[0]).startswith(
-                self.NUDGE_SKIP_TOPIC)
-            for who in self.relay_targets(kind, to_role, scope):
+            notice = str(topic).startswith(self.NUDGE_SKIP_TOPIC)
+            targets = list(self.relay_targets(kind, to_role, scope))
+            # **交付报告必须送到经理窗口**：relay_targets 的兜底名单里没有 owner.me，
+            # 只把报告算进"候选"是不够的（2026-09-23 踩过：#863 有候选、无收件人，
+            # 结果「报告躺在看板上、经理不知道、队伍空转」）。
+            if str(topic).startswith("报告") and "owner.me" not in targets:
+                targets.append("owner.me")
+            for who in targets:
                 text = "%s\n%s\n\n（回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\"；直接在这里说也行）" % (
                     label, body, mid, who)
                 ok = True
