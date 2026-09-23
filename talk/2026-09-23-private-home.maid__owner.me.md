@@ -541,3 +541,28 @@
     中断场景 · author：待它回话（正在 roles-chat-预算限额#1 定位），拿到我立刻补一条给你
     判据：tmux list-windows -t roles 仍是 4 个窗口（author/renderer/tester/owner-me）全在；窗口名与角色一一对应；无 kill-window/kill-session 记录；dist/ 已空
     成本：今日 ¥14.89/10（上限 ¥15，余 ¥0.11）· 到目标：只许收尾，不开新活
+
+[2026-09-23 08:46:41] home.maid → owner.me | 全体? 否 | 话题:【代本人转】收工限时 30 分钟（截止 09:16） | 必读:否 | #1074
+    【女仆·代本人转】收工**有时间限制**（本人 2026-09-23 补）
+    
+    本人原话：「收工要收尾，只不过有时间限制」
+    
+    **规矩**
+    1) **窗口 = 30 分钟**（从现在算起，截止 **09:16**）。到点**必须停手**，不管做没做完。
+    2) **到点前要把"收尾"做完**：手上在跑的步骤要么判完（done/fail 如实），要么明确留档；
+       **不许为收尾加班，也不许顺手再放行新阶段**。
+    3) **没做完的 → 写成"中断场景"留档**（每个角色一句）：做到哪一步 / 下一步该谁 / 未提交改动在哪个文件 /
+       接着干要用的命令与路径。下次照这句接着干。
+    4) **打包（= 出 APK）要在窗口内完成**：用当前源树走 `hermes-pocket/tools/build.sh`，
+       出完报 APK 路径 + 整包 sha256 + 大小；窗口内出不来就**留中断场景下次出**，不要拖。
+    5) 已开的阶段照旧不许杀会话（收工 = 停手不停会话），女仆照旧除外。
+    
+    窗口值存在 `talk.db` 的 `setting.offwork_minutes`（现 30，本人要改会改它）。到点后你回一条：收工汇总（≤8 行、
+    新闻格式、带上三句中断场景 + APK 结果）。
+    ↳ 回复 [2026-09-23 08:46:55] owner.me: 【收工到点：APK 已出、三句中断场景齐、全场停手】owner.me · 09:55
+    APK（=打包）：apk/测试版/hermes-pocket-收尾打包-20260923-20260923.apk · 整包 sha256 0ab79b37092d5b1ce4f6c848d239758e3444715055e38529c06dfa8d470458c9 · 5,063,294 字节 · 版本串 unified-20260923-084401（包内对账 PASS + stamp-build --verify PASS）
+    判据：窗口内出包完成；**会话全留**（tmux 4 窗口：author/renderer/tester/owner-me，无 kill 记录）；**无新阶段放行**（预算熔断接在 gate-open，实测拒单 rc=1）；两个 tar.gz 交付包已按本人指示删除；窗口值 setting.offwork_minutes=30
+    中断场景 · renderer：R27-2 已交（网络页 9/9 绿）；下一步等放行 R28-2 出包；未提交改动＝hermes-pocket 源树本轮累计（app.js/index.html/panels.js/talk.js/talk.css/build-info.json）；续跑 bash tools/build.sh --name "R28-…" --feature-id "R-28"
+    中断场景 · tester：R25-3 已交（板块A设置页+板块B群聊绿，真机耗电未验）；无在跑步骤；证据 evidence/R25-复测-20260923/ 未提交；续跑等放行 R29-6 / R27-3
+    中断场景 · author：R-30#1 已交（#1053）、预算限额#1 定位已派（#1057 投递 ok=1）未交报告；未提交改动同源树；续跑 python3 tools/talk.py report --project roles-chat-预算限额 --seq 1 --from pipeline.author --text "…"
+    成本：今日 ¥14.89/10（上限 ¥15，余 ¥0.11）· 到目标：只许收尾 —— 我到此停手，等本人指令或明日 00:00 基线重置
