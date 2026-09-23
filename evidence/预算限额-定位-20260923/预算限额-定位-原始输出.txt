@@ -1,0 +1,77 @@
+### roles-chat-预算限额 第 1 步「定位根因」原始输出 —— 2026-09-23 · 角色 pipeline.author（只定位，未改代码）
+# 读到的源：tools/talk.py（sha256 d931f09fd20e）· tools/prices_cny.json（06ce8414fb9b）
+# 用量源：~/.hermes/state.db 的 session_model_usage（只读）；基线：talk.db 的 pref 表
+
+=== ① 数据源：为什么必须先有基线快照 ===
+session_model_usage 的主键是 (session_id, model, task)，列里有 api_call_count / input_tokens / cache_read_tokens /
+output_tokens / estimated_cost_usd / first_seen / last_seen —— **全是累计计数器**，没有任何「按天/按小时」的列，
+同一会话用久了就是**同一行一直往上涨**（实测：author 会话 677b99 的那一行从 first_seen=1790091579 一路累加到 last_seen=1790124539）。
+⇒ “今天花了多少”只能 = **现在读数 − 今天某个时刻的快照**，没有别的取法。
+
+=== ② 现成基线口径：**两处同名不同表**（这是最容易复算错的地方）===
+· 真基线在 **pref 表**（`state_get/state_set` 读写的就是 pref，talk.py:1568-1581）：
+  `pref.budget_base:<会话id>` = JSON `{"in":…,"cache":…,"out":…,"calls":…}`（快照时刻的累计值）+ `pref.budget_base_date` + `pref.budget_base_at`；
+  实测 owner.me 基线 `{"in":85289,"cache":11351065,"out":39843,"calls":53}`（08:52:54，`budget_base_note` 写着「按当日调用占比反推（估算）」）。
+· **setting 表里那 5 条 `budget_base:*`（值像 0.819434 这种美元数字）是死数据**：`budget()` 只解析以 `{` 开头的值（talk.py:1449-1452），
+  读 setting 复算会得到 ¥129.34，读 pref 才是真值 ¥15.21 —— 差 8.5 倍。建议：删掉这 5 条，或改名成 `budget_base_usd_legacy:*` 并在文档里说明。
+
+=== ③ 池子范围：本机全部 Hermes 会话（实测）===
+· state.db 里有用量的会话共 **54 个**（历史累计 $19.4519）；`_usage_now()`（talk.py:1422-1433）就是按 session_id 全量 SUM。
+· 当日有调用的 **7 个**（其余当日=0，列表里不显示）：
+    20260922_222328_5c3e21：调用 424 · ¥3.89
+    20260917_145007_d28129f2：调用 320 · ¥3.76
+    20260922_210353_677b99：调用 366 · ¥2.66
+    20260922_233613_460d1d：调用 309 · ¥2.56
+    20260922_233611_2a66bd：调用 322 · ¥2.17
+    20260922_211447_7c720c：调用 66 · ¥0.28
+    20260922_150420_5c015a：调用 2 · ¥0.01
+  ↳ 其中 5 个是团队角色（owner.me / home.maid / pipeline.author / pipeline.renderer / pipeline.tester），
+    另外 2 个是**非角色会话**：7c720c（旧女仆会话，已废）、5c015a（mark-readnotes 项目会话）——
+    ⚠ 与 #1044 说的「经理+三角色+女仆通道」口径不完全一致；它们今日量很小（¥0.28 / ¥0.01），但口径要么收成白名单，要么在报告里分栏。
+· 会话改名/重建不影响按 session_id 取数；但**新会话没有基线时会按“全部累计”算**（见 ④ 的风险 2）。
+
+=== ④ 打点与熔断：现状 + 我的建议 ===
+现状（都已经在代码里）：`budget()` talk.py:1435-1471、`budget_gate()` 1473-1489、CLI `budget` 2212-2226、
+  跨天重打基线在中转站循环里（relay-daemon 每分钟扫，talk.py:2195-2197）、放行前挂点 `gate-open` → gate_open 里调 budget_gate（talk.py:600）。
+建议 1（熔断位置）：**gate-open 前查一次（已做）+ 派活前再查一次**。理由：钱是在**角色真干活**时花的，不是在放行时花的；
+  现在到 ¥10 后虽然放行被拒，但经理仍能 `deliver`/`tell` 给角色投新活（角色一开工就烧钱）。建议在 deliver 前对「派活类」消息查 budget（告知/报告类不拦）。
+建议 2（拒单记录）：现在 gate_open 只是抛错/返回文案（talk.py:600 起），判据「到 ¥15 派不出去要有拒单记录」目前**没有落库的地方**。
+  建议拒单时往 msg 落一条系统消息（如 topic=「【预算熔断】」），或在 delivery 表落一行 ok=0/note=预算熔断 —— 这样复测能数出来。
+建议 3（跨天打点）：继续用 relay-daemon 每分钟扫（已实现），但要认清自愈的代价（见风险 1）；另外 `budget_base_at` 现在没随重打更新，
+  建议重打时一并写 `budget_base_at`，让「基线时刻」在 CLI 里可见。
+建议 4（池子口径）：把参与池子的会话做成显式白名单（setting `budget_sessions`），默认团队五个，其它会话另列一栏；
+  否则以后每开一个项目会话都会悄悄进池子（现在就有两个）。
+风险 1（**我今天踩到并已修**）：`budget(rollover=True)` 或者「日期不符」时，会把**当前**累计值直接写成基线 —— 等价于把「现在」当成「今天 00:00」。
+  实测：把 `pref.budget_base_date` 改成 2000-01-01 再跑一次 budget()，当日数字立刻变 ¥0.0000（当天已花的钱被记成 0），熔断随之失效。
+  ⇒ 任何一次误触发/中转站重启都会「白送」一次预算。我的修法建议：重打前先判 `now - budget_base_at`（同一天内不重打，除非显式 --force-rollover）。
+   （今天这次事故已用 git HEAD 里的 talk.db 快照把 54 条基线复原，复原后 ¥15.21；详见文末「事故与复原」。）
+风险 2（缺基线的新会话）：当天新建的会话没有基线 → 按「全部累计」算。新会话的累计本来就都在今天，数学上是对的；
+  但如果会话是**昨天建的、今天第一次被扫到**（中转站昨天没跑），昨天的量会被算进今天 —— 概率小，写在这里备查。
+
+=== ⑤ 判据清单（能真跑）===
+① 当日数字与手工复算一致：`python3 tools/talk.py budget --json` 的 `spent_cny` vs 用 pref 基线复算 —— **实测差 ¥0.0000**（¥15.2089 vs ¥15.2089）；
+   复算脚本见本文件 ⑥（读 pref，不读 setting）。
+② 到 ¥15 时新阶段派不出去且有拒单记录：`talk.py gate-open --project X --seq N` 必须失败，并且**能查到一条拒单记录**（现在只有报错文案，需要新增落库）。
+③ 跨天：把 `pref.budget_base_date` 改成昨天 → 跑一次 budget → 当日≈¥0 且基线重打（实测如此）；
+   ⚠ 同时要验「同一天内不许重复重打」——这是风险 1 的回归判据。
+④ 池子口径：改白名单（setting `budget_sessions`）后合计随之变化且可复算；非白名单会话不进池子。
+⑤ 汇率无关：`setting.cny_per_usd`（现 7.2）**只用于报告行的美元×汇率**；预算数字走 `tools/prices_cny.json` 的官方人民币价
+   （flash 空闲：miss ¥1.00/百万 · hit ¥0.02/百万 · output ¥4.00/百万；高峰翻倍，按北京时间工作日 09-12/14-18 判 tier，talk.py:1415-1420）。
+   判据：改 `cny_per_usd` 后 `budget()` 的数字**不动**。
+
+=== ⑥ 复算脚本（判断 ① 用；直接可跑）===
+```python
+import sys, json; sys.path.insert(0,"tools"); import talk as T
+tk=T.Talk(None); u=tk._usage_now(); pr=(tk.prices() or {})["flash"]; tier=tk.price_tier()
+m,hi,o=pr["cache_miss"][tier],pr["cache_hit"][tier],pr["output"][tier]; tot=0.0
+for sid,c in u.items():
+    raw=tk.state_get("budget_base:%s"%sid,"") or ""; bd=json.loads(raw) if raw.strip().startswith("{") else {}
+    d={k:max(0,c[k]-int(bd.get(k,0) or 0)) for k in ("in","cache","out","calls")}
+    tot+=(d["in"]*m+d["cache"]*hi+d["out"]*o)/1e6
+print("手工复算 ¥%.4f | 工程 budget() ¥%.4f" % (tot, tk.budget()["spent_cny"]))
+```
+
+=== ⑦ 事故与复原（如实记）===
+我在验判据 ③ 时直接改了 live 数据（把 `pref.budget_base_date` 设成 2000-01-01）→ 触发重打 → 当日计数被清零（¥15.09→¥0.00）。
+发现后立刻用 git HEAD 里的 talk.db 快照（提交 6c9ccb9）把 **54 条基线逐条复原**，复原后 `budget()` = ¥15.2089（硬停档），与手工复算一致（差 ¥0.0000）。
+教训：验这类「会自己写数据」的判据要先 `cp talk.db` 备份，或在只读副本上跑 —— 这条也写进了建议 3 的回归判据（同一天不许重复重打）。
