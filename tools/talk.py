@@ -881,7 +881,7 @@ class Talk:
         out = []
         for p in sorted(by)[:limit]:
             steps = sorted(by[p])
-            done = sum(1 for st in steps if st[3] == "done")
+            done = sum(1 for st in steps if st[3] in ("done", "ended"))
             act = [st for st in steps if st[3] == "active"]
             if act:
                 s, name, role, _ = act[0]
@@ -2046,7 +2046,8 @@ def main():
         if not rows:
             print("（还没有阶段）")
         for p, s, name, role, state in rows:
-            mark = {"active": "◀ 进行中", "done": "✔ 已完成", "locked": "🔒 未放行"}.get(state, state)
+            mark = {"active": "◀ 进行中", "done": "✔ 已完成", "ended": "■ 已结束（本轮不做/未完成）",
+                    "locked": "🔒 未放行"}.get(state, state)
             print("%-24s #%d %-14s %-24s %s" % (p, s, name, role, mark))
     elif a.cmd == "gate-open":
         t.gate_open(a.project, a.seq, a.by or "owner.me", force=bool(a.force))
