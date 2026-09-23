@@ -645,16 +645,15 @@ class Talk:
         p, s, name = locked[0][0], locked[0][1], locked[0][2]
         return "他名下全部阶段都还没放行（%s 第 %d 步（%s）…）" % (p, s, name)
 
-    # 交付报告的必备项（2026-09-23 二次收紧：标题 + 四行 + 成本行，整条 ≤8 行）
-    # 每一行接受两种写法：新模板（做/等/成本）与旧写法（做了什么/依赖/本次任务）——老报告别判死。
-    REPORT_FIELDS = ["做", "证据", "判据", "等", "成本"]
-    REPORT_ALIASES = {
-        "做": ("做了什么", "做什么", "做"),
-        "证据": ("证据",),
-        "判据": ("判据",),
-        "等": ("依赖", "等"),
-        "成本": ("本次任务", "成本"),
-    }
+    # 交付报告格式（2026-09-23 三次收紧 = **新闻写法**，本人定）：
+    #   倒金字塔：标题 → 导语 → 细节 → 成本；含标题整条 ≤8 行。
+    # 硬校验只留三样（其余自由写，别把好报告按死）：
+    #   ① 首行是标题（【…】，≤25 字，谁做了什么/结果如何，带数字）
+    #   ② **成本行**必填（人民币）
+    #   ③ 整条 ≤8 行
+    # 旧写法（做/证据/判据/等/本次任务）照样收 —— 格式变了不代表老报告作废。
+    REPORT_FIELDS = ["成本"]
+    REPORT_ALIASES = {"成本": ("成本", "本次任务")}
     REPORT_MAX_LINES = 8        # 含标题；超了就是不合格（本人 2026-09-23 定）
 
     def report(self, project, seq, from_role, body):
@@ -664,12 +663,13 @@ class Talk:
             if not any((al + ":") in body or (al + "：") in body for al in self.REPORT_ALIASES[f]):
                 missing.append(f)
         if missing:
-            raise ValueError("交付格式不合格，缺：%s（模板见 README：首行标题【项目-步号 步名】角色 · HH:MM，"
-                             "然后 做/证据/判据/等/成本，整条 ≤8 行）" % "、".join(missing))
+            raise ValueError("交付格式不合格，缺：%s（新闻写法见 README：首行标题【<项目>-<步号> <步名>】<角色> · HH:MM，"
+                             "然后导语（一句说完成没成 + 关键读数）、细节（数字递减）、末行成本；整条 ≤8 行）"
+                             % "、".join(missing))
         lines = [ln for ln in body.splitlines() if ln.strip()]
         head = lines[0] if lines else ""
         if not head.lstrip().startswith("【"):
-            raise ValueError("交付格式不合格：首行要是指明内容的标题（【<项目>-<步号> <步名>】<角色全名> · <HH:MM>）")
+            raise ValueError("交付格式不合格：首行要是**标题**（【<项目>-<步号> <步名> 一句话结论】<角色全名> · <HH:MM>，≤25 字）")
         if len(lines) > self.REPORT_MAX_LINES:
             raise ValueError("交付格式不合格：整条 %d 行，超过 %d 行（一行一件事，原文进证据文件）"
                              % (len(lines), self.REPORT_MAX_LINES))
@@ -891,17 +891,18 @@ class Talk:
             out.append("%s：%s" % (short, cur))      # 一行一个项目，别再写"第 N 步…步完成"那串废话
         return "\n".join(out)
 
-    def notify_role_switch(self, role, prev=None, reason="", push=True):
+    def notify_role_switch(self, role, prev=None, reason="", push=True, project=None):
         """角色切换 → 经理告知本人（QQ，经女仆）：切到谁、为什么、项目进度走到哪。
 
         调用方必须用**管理员连接**（Talk(None)）或经理身份，否则 send() 会以
         "我是 X，不能替 owner.me 发言" 拒掉；署名固定 owner.me＝经理。
         """
         prev = (prev if prev is not None else (self.state_get("active_role", "") or ""))
-        body = "角色切换：%s → %s" % (prev or "（未记录）", role)
-        if reason:
-            body += "\n为什么切：%s" % reason
-        body += "\n项目进度：\n" + self.progress_line()
+        # 新闻写法（本人 2026-09-23 定）：标题给结论 → 导语一句 → 细节只列**刚动的那个项目** → 成本
+        short = role.split(".")[-1]
+        body = "【切换】%s 接手%s\n" % (short, ("：" + reason) if reason else "")
+        body += "%s → %s，接下来由 %s 干；项目只列刚动的这条。\n" % (prev or "（未记录）", role, short)
+        body += "进度：" + self.progress_line(project=project)
         self.state_set("active_role", role)
         return self.tell_user("告知", body, frm="owner.me", topic="角色切换", push=push)
 
@@ -1874,7 +1875,8 @@ def main():
         try:
             role = t.stage_role(a.project, a.seq)
             n = t.notify_role_switch(role, reason="阶段放行：%s 第 %d 步 %s" % (
-                a.project, a.seq, t.stage_name(a.project, a.seq)), push=(a.dry is not True))
+                a.project, a.seq, t.stage_name(a.project, a.seq)), push=(a.dry is not True),
+                project=a.project)
             print("已由女仆带话给本人：#%d（角色切换 → %s）" % (n["id"], role))
         except Exception as e:
             print("角色切换通报失败：%s" % e)
@@ -1882,8 +1884,9 @@ def main():
         t.gate_done(a.project, a.seq, a.by or "owner.me")
         print("已判定完成：%s 第 %d 步" % (a.project, a.seq))
         try:
-            n = t.tell_user("告知", "%s 第 %d 步「%s」已判定完成。\n项目进度：\n%s" % (
-                a.project, a.seq, t.stage_name(a.project, a.seq), t.progress_line()),
+            n = t.tell_user("告知", "【完成】%s 第 %d 步「%s」判定完成\n进度：%s" % (
+                a.project, a.seq, t.stage_name(a.project, a.seq),
+                t.progress_line(project=a.project)),
                 frm="owner.me", topic="进度", push=(a.dry is not True))
             print("已由女仆带话给本人：#%d（进度）" % n["id"])
         except Exception as e:
