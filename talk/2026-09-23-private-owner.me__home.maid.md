@@ -503,3 +503,12 @@
     【切换】tester 接手：阶段放行：hermes-pocket-R26 第 3 步 复测
     pipeline.renderer → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
     进度：R26：2/3 · 当前 3 复测(tester)
+
+[2026-09-23 08:28:08] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1021
+    【完成】hermes-pocket-R29 第 5 步「实现与出包」判定完成
+    进度：R29：5/6 · 等 6 复测第二次(tester)
+
+[2026-09-23 08:28:08] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1023
+    【切换】renderer 接手：阶段放行：hermes-pocket-R25 第 2 步 实现与出包
+    pipeline.tester → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：R25：1/3 · 当前 2 实现与出包(renderer)
