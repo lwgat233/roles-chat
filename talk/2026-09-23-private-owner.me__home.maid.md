@@ -521,3 +521,12 @@
     【切换】author 接手：阶段放行：hermes-pocket-R28 第 1 步 定位根因
     pipeline.renderer → pipeline.author，接下来由 author 干；项目只列刚动的这条。
     进度：R28：0/3 · 当前 1 定位根因(author)
+
+[2026-09-23 08:32:00] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1034
+    【完成】hermes-pocket-R28 第 1 步「定位根因」判定完成
+    进度：R28：1/3 · 等 2 实现与出包(renderer)
+
+[2026-09-23 08:32:00] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1036
+    【切换】author 接手：阶段放行：hermes-pocket-R30 第 1 步 定位根因
+    pipeline.author → pipeline.author，接下来由 author 干；项目只列刚动的这条。
+    进度：R30：0/3 · 当前 1 定位根因(author)
