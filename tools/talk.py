@@ -1432,13 +1432,20 @@ class Talk:
         return {sid: {"in": int(i), "cache": int(c), "out": int(o), "calls": int(n)}
                 for sid, i, c, o, n in rows}
 
-    def budget(self, rollover=False, tier=None):
-        """全局预算：一份池子（所有会话合计）。当日 = 今日 00:00 起的增量，按**人民币实价**算，不乘汇率。"""
+    def budget(self, rollover=False, tier=None, force=False):
+        """全局预算：一份池子（所有会话合计）。当日 = 今日 00:00 起的增量，按**人民币实价**算，不乘汇率。
+
+        同一天**不许重复重打基线**：否则会把当日清零、熔断失效（2026-09-23 实测 ¥15.09 → ¥0.00）。
+        要强制重打只能显式 force（cross-day 由中转站自动做）。"""
         today = time.strftime("%Y-%m-%d")
-        if rollover or self.state_get("budget_base_date", "") != today:
+        base_date = self.state_get("budget_base_date", "") or ""
+        if rollover and base_date == today and not force:
+            rollover = False
+        if rollover or base_date != today:
             for sid, u in self._usage_now().items():
                 self.state_set("budget_base:%s" % sid, json.dumps(u, separators=(",", ":")))
             self.state_set("budget_base_date", today)
+            self.state_set("budget_base_at", "%d" % now_ts())
         tier = tier or self.price_tier()
         pr = (self.prices() or {}).get("flash", {})
         miss = pr.get("cache_miss", {}).get(tier, 0.0)
@@ -1967,7 +1974,8 @@ def main():
     ap.add_argument("--state", default="", help="对接状态：delivered/read/replied/failed（ack 用）")
     ap.add_argument("--json", dest="json", action="store_true",
                     help="budget 用：输出 JSON（给程序读）")
-    ap.add_argument("--rollover", action="store_true", help="预算：强制重打今日基线（跨天用）")
+    ap.add_argument("--rollover", action="store_true", help="预算：重打今日基线（同日不重打）")
+    ap.add_argument("--force", action="store_true", help="预算：连同日也强制重打（危险：会把当日清零）")
     ap.add_argument("--minutes", type=int, default=45,
                     help="逾期追问阈值（分钟，默认 45）")
     ap.add_argument("--max", type=int, default=2,
@@ -2211,7 +2219,7 @@ def main():
                 print("  一轮出错：%s" % e)
             _t.sleep(a.poll or 5)
     elif a.cmd == "budget":
-        r = t.budget(rollover=bool(getattr(a, "rollover", False)))
+        r = t.budget(rollover=bool(getattr(a, "rollover", False)), force=bool(getattr(a, "force", False)))
         if getattr(a, "json", False):
             print(json.dumps(r, ensure_ascii=False))
         else:
