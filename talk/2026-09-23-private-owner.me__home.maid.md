@@ -530,3 +530,21 @@
     【切换】author 接手：阶段放行：hermes-pocket-R30 第 1 步 定位根因
     pipeline.author → pipeline.author，接下来由 author 干；项目只列刚动的这条。
     进度：R30：0/3 · 当前 1 定位根因(author)
+
+[2026-09-23 08:32:51] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1039
+    【完成】hermes-pocket-R25 第 2 步「实现与出包」判定完成
+    进度：R25：2/3 · 等 3 复测(tester)
+
+[2026-09-23 08:32:51] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1041
+    【切换】renderer 接手：阶段放行：hermes-pocket-R27 第 2 步 实现与出包
+    pipeline.author → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：R27：1/3 · 当前 2 实现与出包(renderer)
+
+[2026-09-23 08:33:55] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1049
+    【完成】hermes-pocket-R26 第 3 步「复测」判定完成
+    进度：R26：3/3 · 已收尾
+
+[2026-09-23 08:33:55] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1051
+    【切换】tester 接手：阶段放行：hermes-pocket-R25 第 3 步 复测
+    pipeline.renderer → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
+    进度：R25：2/3 · 当前 3 复测(tester)
