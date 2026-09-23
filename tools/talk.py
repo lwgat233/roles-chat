@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS notify(msg_id INTEGER PRIMARY KEY, marked_at INTEGER,
 -- 中转站的投递台账：哪条消息投给了谁、什么时候、成没成
 CREATE TABLE IF NOT EXISTS pref(k TEXT PRIMARY KEY, v TEXT);   -- 中转站小状态（游标等）
 CREATE TABLE IF NOT EXISTS delivery(
-  msg_id INTEGER, role TEXT, at INTEGER, ok INTEGER, note TEXT, PRIMARY KEY(msg_id, role));
+  msg_id INTEGER, role TEXT, at INTEGER, ok INTEGER, note TEXT, ms INTEGER,
+  PRIMARY KEY(msg_id, role));   -- ms = 投递耗时（毫秒，time.monotonic 实测；老库由连接初始化补列）
 CREATE TABLE IF NOT EXISTS wake(
   msg_id INTEGER, role TEXT, state TEXT, by_role TEXT, why TEXT, at INTEGER, delivered_at INTEGER,
   PRIMARY KEY(msg_id, role));
@@ -169,7 +170,8 @@ class Talk:
                    "ALTER TABLE role ADD COLUMN tags TEXT",
                    "ALTER TABLE role ADD COLUMN bind TEXT",
                     "ALTER TABLE msg ADD COLUMN scope TEXT",
-                    "ALTER TABLE msg ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0"):
+                    "ALTER TABLE msg ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0",
+                    "ALTER TABLE delivery ADD COLUMN ms INTEGER"):
             try:
                 self.conn.execute(sql)
             except sqlite3.Error:
@@ -178,6 +180,7 @@ class Talk:
         # 身份（用户 2026-09-22 定）：
         #   me        = 本人（用户）：最高权限，看全部含私信，能直达任何角色
         #   owner.me  = 经理（助手，代他指挥角色）：管流程，但**看不到私信内容**
+        self.last_deliver_ms = 0      # 上一次投递耗时（毫秒）；没有会话/被拦时为 0
         self.admin = (role is None) or (role == "me") or self._has("msg:all", "read")   # 看全部内容（含私信）
         self.manage = self._can_manage()                              # 管理权（改名册/放行阶段/暂停）
         if role:
@@ -665,8 +668,8 @@ class Talk:
                          % (feat, body, project, seq, who))
         except Exception as e:
             ok, note = 0, "报告投递失败: %s" % e
-        self.conn.execute("INSERT OR REPLACE INTO delivery(msg_id,role,at,ok,note) VALUES(?,?,?,?,?)",
-                          (mid, who, now_ts(), ok, note))
+        self.conn.execute("INSERT OR REPLACE INTO delivery(msg_id,role,at,ok,note,ms) VALUES(?,?,?,?,?,?)",
+                          (mid, who, now_ts(), ok, note, self.last_deliver_ms))          # 报告也记耗时
         self.conn.commit()
         return mid
 
@@ -909,6 +912,7 @@ class Talk:
         sess = self.target(role)
         if subprocess.run(["tmux", "has-session", "-t", sess], capture_output=True).returncode != 0:
             raise RuntimeError("角色 %s 没有会话（先 spawn）" % role)
+        t0 = time.monotonic()          # 投递耗时从这里算起（R-31：迟滞本身要能被测、被展示）
         buf = "rc%d" % now_ts()
         if "\n" in text:
             # 多行：粘贴后**等久一点**再回车，而且回车**补第二次**兜底。
@@ -927,6 +931,7 @@ class Talk:
             subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=True)
         subprocess.run(["tmux", "delete-buffer", "-b", buf], check=False,
                        capture_output=True)   # 单行分支没建过缓冲区，删失败不算错（也别吓人）
+        self.last_deliver_ms = int(round((time.monotonic() - t0) * 1000))   # 台账记它（R-31）
         return sess
 
     def capture(self, role, n=1000):
@@ -1082,8 +1087,9 @@ class Talk:
                 except Exception as e:
                     ok = False
                     text = str(e)
-                self.conn.execute("INSERT OR REPLACE INTO delivery(msg_id,role,at,ok,note) VALUES(?,?,?,?,?)",
-                                  (mid, who, now_ts(), 1 if ok else 0, text[:120] if not ok else ""))
+                self.conn.execute("INSERT OR REPLACE INTO delivery(msg_id,role,at,ok,note,ms) VALUES(?,?,?,?,?,?)",
+                                  (mid, who, now_ts(), 1 if ok else 0, text[:120] if not ok else "",
+                                   self.last_deliver_ms))
                 sent.append({"id": mid, "to": who, "ok": ok})
             cur = max(cur, mid)
         # 收角色的终端回答 → 记成 reply（他不必自己调函数）
@@ -1265,11 +1271,11 @@ class Talk:
     def deliveries_json(self, limit=20):
         """投递台账（面板显示"谁收了、谁没收、为什么"）"""
         rows = self.conn.execute(
-            "SELECT d.msg_id,d.role,d.ok,d.note,d.at,m.topic,m.body FROM delivery d"
+            "SELECT d.msg_id,d.role,d.ok,d.note,d.at,m.topic,m.body,COALESCE(d.ms,-1) FROM delivery d"
             " LEFT JOIN v_msg m ON m.id=d.msg_id ORDER BY d.msg_id DESC, d.role LIMIT ?", (limit,)).fetchall()
         return {"count": len(rows), "items": [
             {"msg": r[0], "role": r[1], "ok": bool(r[2]), "note": r[3] or "", "at": r[4],
-             "topic": r[5] or "", "body": (r[6] or "")[:40]} for r in rows]}
+             "topic": r[5] or "", "body": (r[6] or "")[:40], "ms": r[7]} for r in rows]}
 
     # ---------- 逾期追问：派了活 N 分钟没回音，经理去问一句 ----------
     # 纯告知/状态类不追（它们本来就不需要逐条回话）。

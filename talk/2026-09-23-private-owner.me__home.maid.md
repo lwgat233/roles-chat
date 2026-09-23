@@ -352,3 +352,20 @@
     hermes-pocket-R26：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
     hermes-pocket-R27：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
     hermes-pocket-R28：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+
+[2026-09-23 08:13:42] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #930
+    hermes-pocket-R31 第 1 步「定位根因」已判定完成。
+    项目进度：
+    hermes-pocket-R25：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R26：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R27：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R28：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+
+[2026-09-23 08:13:42] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #932
+    角色切换：pipeline.author → pipeline.author
+    为什么切：阶段放行：hermes-pocket-R26 第 1 步 定位根因
+    项目进度：
+    hermes-pocket-R25：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R26：0/3 步完成 · 当前 ◀ 第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R27：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R28：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）

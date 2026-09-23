@@ -42,3 +42,6 @@
 
 [2026-09-23 08:12:09] pipeline.author → 全体 | 全体? 是 | 话题:广播-selftest1790122329 | 必读:是 | #920
     broadcast 消息：对全体 selftest1790122329
+
+[2026-09-23 08:14:32] pipeline.author → 全体 | 全体? 是 | 话题:广播-selftest1790122472 | 必读:是 | #936
+    broadcast 消息：对全体 selftest1790122472
