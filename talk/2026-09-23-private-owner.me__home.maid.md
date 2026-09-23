@@ -369,3 +369,29 @@
     hermes-pocket-R26：0/3 步完成 · 当前 ◀ 第 1 步 定位根因（pipeline.author）
     hermes-pocket-R27：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
     hermes-pocket-R28：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+
+[2026-09-23 08:15:41] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #944
+    hermes-pocket-R29 第 2 步「实现与出包」已判定完成。
+    项目进度：
+    hermes-pocket-R25：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R26：0/3 步完成 · 当前 ◀ 第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R27：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R28：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+
+[2026-09-23 08:15:41] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #946
+    角色切换：pipeline.author → pipeline.tester
+    为什么切：阶段放行：hermes-pocket-R29 第 3 步 复测
+    项目进度：
+    hermes-pocket-R25：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R26：0/3 步完成 · 当前 ◀ 第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R27：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R28：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+
+[2026-09-23 08:15:41] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #948
+    角色切换：pipeline.tester → pipeline.renderer
+    为什么切：阶段放行：hermes-pocket-R31 第 2 步 实现与出包
+    项目进度：
+    hermes-pocket-R25：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R26：0/3 步完成 · 当前 ◀ 第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R27：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）
+    hermes-pocket-R28：0/3 步完成 · 下一步待放行：第 1 步 定位根因（pipeline.author）

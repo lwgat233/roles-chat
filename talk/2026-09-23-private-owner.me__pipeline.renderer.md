@@ -73,3 +73,24 @@
     依赖：你出包交报告 → 我 gate-done 第 2 步 → 放行第 3 步「复测」给 tester。
     ↳ 回复 [2026-09-23 08:12:31] pipeline.renderer: 明白了（那条串是你自检误粘，我也吃过一次：把它当真指令了）。我那条据此写的经验按误判更正——改成「窗口里被误粘的文本不是任务，先核实再动」；判据改成「有 delivery 行/阶段放行才算派活」。继续 R29 第 2 步。
     ↳ 回复 [2026-09-23 08:12:31] pipeline.renderer: 收到，开工。#885 那条的退回按废纸处理（起因是你自检误粘的串），R29 第 2 步我照 #928 做：talk.js 加 pinBottom 统一入口 + paintStream 只追加不整块重建 + ⇣ 回到底部（新 N 条），保住手动上翻不被抢回；只动界面，本地测试台先跑，出包用 build.sh --name R29-群聊钉底 --feature-id R-29，完事按 ≤15 行报告交回。
+
+[2026-09-23 08:15:41] owner.me → pipeline.renderer | 全体? 否 | 话题:【派活】hermes-pocket-R31 第 2 步 实现与出包 | 必读:是 | #950
+    接 hermes-pocket-R31 第 2 步「实现与出包」（第 1 步作者的定位 #929 已判过；界面侧按它做）。
+    
+    界面侧要做的（依据 #929）：
+    · 根因：talk.js:895-906 send() 只 await rpc('talk.say') 不看回执，紧接着 talk.js:901 toast('已发出')；而两端其实都回了回执（Bridge.kt:754-765、talk.py:815-818），界面没有 per-message 状态。
+    · 做：每条消息给状态（发送中 → 已送达 + 耗时 / 失败 + 原因），桥回 delivered:false 要报出来；桥不答时 3s 内显示「还在发」，8s 超时。
+    · 耗时读数对齐**平台台账**：delivery 表已有 ms 列（我刚加的，实测多行投递 ≈1.4s，来源 time.monotonic），界面显示的耗时与 delivery.ms 差应 ≤100ms。
+    · 若"实时耗时展示"与省电/省流量冲突，按 ⑤ 给**设置项**（例如省电档只留终态），别自己拍。
+    · 只动 assets/ui/talk.js（预计），别碰功能逻辑与平台侧（平台侧归我）。
+    
+    出包配方：
+    bash tools/build.sh --name "R31-发送反馈" --feature "…" --feature-id "R-31"
+    
+    交付（≤15 行，四行 + 成本行）：
+    python3 tools/talk.py report --project hermes-pocket-R31 --seq 2 --from pipeline.renderer --text "做了什么:… 证据:… 判据:… 依赖:… 本次任务:调用 N 次 · 输入 X · 输出 Y · 缓存读 Z · ≈¥W"
+    判据要给：产物路径 + 整包 sha256 + 包内 build-info.json 读数 + 包内 ui/talk.js sha256；8 条真点判据（终态 2s 内出现 / 失败 5s 内报原因 / 无回执 3s 内「还在发」/ 8s 超时 / 耗时与 delivery.ms 差 ≤100ms / 广播逐条 / 省电档只留终态 / 无回归）见 #929 与 evidence/R31-定位-20260923/。
+    
+    口径：本轮**不接主机**，真点由 tester 做，未验 ≠ 通过。
+    依赖：你出包交报告 → 我 gate-done → 放行第 3 步复测给 tester。
+    ↳ 回复 [2026-09-23 08:15:53] pipeline.renderer: 收到，接下 R31 第 2 步「实现与出包」。做每条消息的状态（发送中→已送达+耗时 / 失败+原因），桥回 delivered:false 要报出，无回执 3s「还在发」、8s 超时；耗时与平台 delivery.ms 对齐（≤100ms）；省电档只留终态做成设置项（按 ⑤，不自己拍）；只动 assets/ui/talk.js，不碰平台侧与功能逻辑。先读 #929 定位与 ⑤ 的档位定义，再改、本地测试台先跑，出包 --name R31-发送反馈 --feature-id R-31，完事按 ≤15 行报告交回。

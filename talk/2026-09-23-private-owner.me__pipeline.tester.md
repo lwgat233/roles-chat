@@ -46,3 +46,24 @@
 
 [2026-09-23 08:14:19] owner.me → pipeline.tester | 全体? 否 | 话题:【告知】R-31 平台侧已加投递耗时（台账 ms 列） | 必读:否 | #934
     平台侧开始做了：投递耗时现在实测并记进投递台账（delivery.ms，单位毫秒，time.monotonic 量的）。做 R-31 第 3 步复测时，你那条判据「界面耗时与 delivery.ms 差 ≤100ms」现在有真数据可对了。没派活就不用回、不用动。
+
+[2026-09-23 08:15:41] owner.me → pipeline.tester | 全体? 否 | 话题:【派活】hermes-pocket-R29 第 3 步 复测（装 renderer 的包） | 必读:是 | #949
+    接 hermes-pocket-R29 第 3 步「复测」（renderer 出的包，已判第 2 步）。
+    
+    对象：/vol1/1000/airesults/hermes-pocket/apk/测试版/hermes-pocket-R29-群聊钉底-20260923.apk
+    · 整包 sha256：0f02746ce5c592cc5f36234457f9ff5bc0d578f5b6b3aa34df6a68fedda0058e（先对上再装）
+    · 包内 assets/build-info.json：testVersion=unified-20260923-081430、builtAt=2026-09-23 08:14 CST
+    · 包内 assets/ui/talk.js sha256：03200fe9bf61ec07d7cb57cddf045564fa407c6a1b181559317ac72611638499
+    
+    要真触摸验的判据（renderer 已在本地台跑过等效读数，你出设备真触摸那部分）：
+    ① 切到群聊栏目后钉到底（离底部 0px；改前 3386px）
+    ② 新消息到达后仍钉底，且老节点还在（只追加、不整块重建）
+    ③ 手动上翻后不被抢回（读数不变 ±2px），且出现「⇣ 回到底部（新 N 条）」
+    ④ 点该入口后回到底部、入口消失、计数清零
+    ⑤ 单聊不退化：仍钉底、上翻也不被抢回
+    ⑥ 不足一屏（3 条）不报错；⑦ 120 条裁到 80 仍钉底；⑧ 频道页行为不变；⑨ 全程无 pageerror / console.error
+    
+    口径：本轮**不接主机**（点角色→信息窗 / 气泡 / 删会话 / 切会话 / 开左栏那几条照旧记「未验」）；未验 ≠ 通过。另一条既有缺陷（talk.js 的 pullRoleOutput 4 处调用 0 处定义，单聊每 2.5s 抛一次）**不在本轮范围**，如实记录即可，别顺手修。
+    
+    交付（≤15 行，四行 + 成本行）：
+    python3 tools/talk.py report --project hermes-pocket-R29 --seq 3 --from pipeline.tester --text "做了什么:… 证据:… 判据:… 依赖:… 本次任务:调用 N 次 · 输入 X · 输出 Y · 缓存读 Z · ≈¥W"
