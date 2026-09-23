@@ -1,0 +1,18 @@
+{
+  "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+  "fetched": "2026-09-23",
+  "unit": "CNY per 1,000,000 tokens",
+  "model_in_use": "deepseek-flash（旧名 deepseek-v4-flash 已退役，请求由 DeepSeek-V4.1-Flash 承接，按 Flash 计费）",
+  "flash": {
+    "cache_hit": { "off_peak": 0.02, "peak": 0.04 },
+    "cache_miss": { "off_peak": 1.0, "peak": 2.0 },
+    "output": { "off_peak": 4.0, "peak": 8.0 }
+  },
+  "pro": {
+    "cache_hit": { "off_peak": 0.15, "peak": 0.30 },
+    "cache_miss": { "off_peak": 4.5, "peak": 9.0 },
+    "output": { "off_peak": 13.5, "peak": 27.0 }
+  },
+  "peak_rule": "高峰时段 = UTC 周一至周五 01:00-04:00 与 06:00-10:00（北京时间 09:00-12:00、14:00-18:00，中国法定节假日除外）；其余为空闲时段。空闲价 = 高峰价的一半。",
+  "note": "这是官方页面上的**人民币标价**，不要再拿美元估算去乘汇率。token 数从 ~/.hermes/state.db 的 session_model_usage 取（input_tokens=缓存未命中、cache_read_tokens=缓存命中、output_tokens=输出）。"
+}

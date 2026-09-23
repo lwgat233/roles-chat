@@ -590,10 +590,16 @@ class Talk:
             args = (project,)
         return self.conn.execute(q + " ORDER BY project, seq", args).fetchall()
 
-    def gate_open(self, project, seq, by_role):
-        """经理放行某个阶段：它变 active；同一项目里它后面的阶段一律 locked"""
+    def gate_open(self, project, seq, by_role, force=False):
+        """经理放行某个阶段：它变 active；同一项目里它后面的阶段一律 locked。
+
+        预算熔断先过一遍（到 ¥10 不开新活、到 ¥15 硬停；收尾已开跑的链不受影响）。
+        """
         if not self._can_control():
             raise PermissionError("只有管理者能放行阶段：%s" % by_role)
+        _b = self.budget_gate(project, force)
+        if _b:
+            raise RuntimeError("预算熔断，不放行：%s" % _b)
         rows = list(self.stages(project))
         if not any(r[1] == seq for r in rows):
             raise ValueError("没有这个阶段：%s#%d" % (project, seq))
@@ -922,6 +928,65 @@ class Talk:
             pass
         return None
 
+    def _session_of_role(self, role):
+        """这个名字对应的 Hermes 会话 id（没有就 None）。
+        注意：名册 `session.hermes` 列里存的可能是**角色名**而不是会话 id（实测 4 个角色全是名字），
+        所以以 state.db 里 `sessions.title == 角色名` 为准；名册那列只有长得像 id 时才当候选。"""
+        cand = None
+        try:
+            r = self.conn.execute("SELECT hermes FROM session WHERE role=?", (role,)).fetchone()
+            if r and r[0] and re.match(r"^\d{8}_\d{6}_", str(r[0])):
+                cand = str(r[0])
+        except Exception:
+            pass
+        try:
+            con = sqlite3.connect("file:%s?mode=ro" % self.STATE_DB, uri=True, timeout=8)
+            try:
+                row = con.execute("SELECT id FROM sessions WHERE title=? ORDER BY started_at DESC LIMIT 1",
+                                  (role,)).fetchone()
+            finally:
+                con.close()
+            if row and row[0]:
+                return str(row[0])
+        except Exception:
+            pass
+        return cand
+
+    def _submitted(self, role, text):
+        """硬证据：接收方会话里已经有这段正文（屏幕上看不出来 —— 躺在输入框和已提交长得一样）。"""
+        sid = self._session_of_role(role)
+        if not sid:
+            return None
+        lines = [l for l in (text or "").strip().splitlines() if l.strip()]
+        if not lines:
+            return None
+        probe = lines[-1].strip()[:24]
+        try:
+            con = sqlite3.connect("file:%s?mode=ro" % self.STATE_DB, uri=True, timeout=8)
+            try:
+                n = con.execute("SELECT COUNT(*) FROM messages WHERE session_id=? AND role='user'"
+                                " AND content LIKE ?", (sid, "%" + probe + "%")).fetchone()[0]
+            finally:
+                con.close()
+            return bool(n)
+        except Exception:
+            return None
+
+    def _user_msg_count(self, role):
+        """对方会话里的 user 消息条数（投递前后比这个数，比按文本片段可靠）。"""
+        sid = self._session_of_role(role)
+        if not sid:
+            return None
+        try:
+            con = sqlite3.connect("file:%s?mode=ro" % self.STATE_DB, uri=True, timeout=8)
+            try:
+                return int(con.execute("SELECT COUNT(*) FROM messages WHERE session_id=? AND role='user'",
+                                       (sid,)).fetchone()[0])
+            finally:
+                con.close()
+        except Exception:
+            return None
+
     def deliver(self, role, text, force=False, gate_force=False):
         """把一段文本安全送进该角色的会话（多行也不怕：load-buffer + paste-buffer + Enter）
 
@@ -948,10 +1013,15 @@ class Talk:
             # 会话侧看不到任何提示（经理因此空转 35 分钟）。空输入框再回车是无害的。
             subprocess.run(["tmux", "load-buffer", "-b", buf, "-"], input=text.encode("utf-8"), check=True)
             subprocess.run(["tmux", "paste-buffer", "-b", buf, "-t", sess], check=True)
+            n0 = self._user_msg_count(role)      # 投递前对方会话里的 user 消息条数
             time.sleep(0.8)
-            subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=True)
-            time.sleep(0.6)
-            subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=False)
+            # 对方忙着跑一轮时，粘贴后的回车会被吞 → 看对方会话有没有多出一条 user 消息，没有就再按
+            for attempt in range(6):
+                subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=(attempt == 0))
+                time.sleep(2.5)
+                n1 = self._user_msg_count(role)
+                if n0 is None or n1 is None or n1 > n0:
+                    break
         else:
             # 单行：直接打字再回车，最稳（不经过粘贴缓冲，TUI 一定能收）
             subprocess.run(["tmux", "send-keys", "-t", sess, "-l", text], check=True)
@@ -1331,6 +1401,93 @@ class Talk:
     # 转告与结论类（【告知/【已解决/【收工/【进度/【卡住/【决定/【纠正】）同样不追 ——
     # 否则一停一开就凭空生出待回项，追问自己还会自我繁殖（实测整夜 80 条）。
     NUDGE_SKIP_TOPIC = ("【告知", "【已解决", "【收工", "【进度", "【卡住", "【决定", "【纠正", "控制")
+
+    STATE_DB = os.path.expanduser("~/.hermes/state.db")
+    PRICES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prices_cny.json")
+
+    def prices(self):
+        try:
+            with open(self.PRICES, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def price_tier(self, when=None):
+        """高峰/空闲：北京时间 09:00-12:00、14:00-18:00 且周一至周五算高峰，其余空闲。"""
+        t = time.localtime(when)
+        hh = t.tm_hour + t.tm_min / 60.0
+        peak = t.tm_wday < 5 and ((9 <= hh < 12) or (14 <= hh < 18))
+        return "peak" if peak else "off_peak"
+
+    def _usage_now(self):
+        """各会话累计用量（token，只读 state.db）。"""
+        con = sqlite3.connect("file:%s?mode=ro" % self.STATE_DB, uri=True, timeout=10)
+        try:
+            rows = con.execute(
+                "SELECT session_id, COALESCE(SUM(input_tokens),0), COALESCE(SUM(cache_read_tokens),0),"
+                " COALESCE(SUM(output_tokens),0), COALESCE(SUM(api_call_count),0)"
+                " FROM session_model_usage GROUP BY session_id").fetchall()
+        finally:
+            con.close()
+        return {sid: {"in": int(i), "cache": int(c), "out": int(o), "calls": int(n)}
+                for sid, i, c, o, n in rows}
+
+    def budget(self, rollover=False, tier=None):
+        """全局预算：一份池子（所有会话合计）。当日 = 今日 00:00 起的增量，按**人民币实价**算，不乘汇率。"""
+        today = time.strftime("%Y-%m-%d")
+        if rollover or self.state_get("budget_base_date", "") != today:
+            for sid, u in self._usage_now().items():
+                self.state_set("budget_base:%s" % sid, json.dumps(u, separators=(",", ":")))
+            self.state_set("budget_base_date", today)
+        tier = tier or self.price_tier()
+        pr = (self.prices() or {}).get("flash", {})
+        miss = pr.get("cache_miss", {}).get(tier, 0.0)
+        hit = pr.get("cache_hit", {}).get(tier, 0.0)
+        outp = pr.get("output", {}).get(tier, 0.0)
+        spent, per = 0.0, []
+        for sid, u in self._usage_now().items():
+            raw = self.state_get("budget_base:%s" % sid, "") or ""
+            try:
+                base = json.loads(raw) if str(raw).strip().startswith("{") else {}
+            except Exception:
+                base = {}
+            d = {k: max(0, u[k] - int(base.get(k, 0) or 0)) for k in ("in", "cache", "out", "calls")}
+            cny = (d["in"] * miss + d["cache"] * hit + d["out"] * outp) / 1e6
+            spent += cny
+            if d["calls"]:
+                per.append({"session": sid, "calls": d["calls"], "in": d["in"], "cache": d["cache"],
+                            "out": d["out"], "cny": round(cny, 4)})
+        goal = float(self.setting_get("budget_goal_cny", "10") or 10)
+        cap = float(self.setting_get("budget_cap_cny", "15") or 15)
+        if spent >= cap:
+            state = "超上限：硬停（不派新阶段、不重跑测试，只报告+等指令）"
+        elif spent >= goal:
+            state = "到目标：只许收尾，不开新活"
+        else:
+            state = "正常"
+        per.sort(key=lambda x: -x["cny"])
+        return {"date": today, "tier": tier, "spent_cny": round(spent, 4), "goal": goal, "cap": cap,
+                "left_to_cap": round(max(0.0, cap - spent), 4), "state": state, "sessions": per,
+                "price_source": (self.prices() or {}).get("source", "")}
+
+    def budget_gate(self, project, force=False):
+        """预算熔断（本人 2026-09-23）：到 ¥10 只许收尾、不开新活；到 ¥15 硬停。
+
+        判据（人民币实价，`budget()`）：**到 ¥10 起，任何"放行新阶段"都拒** —— 收尾不需要放行
+        （收尾＝让在跑的步骤交报告 + 判 done）。到 ¥15 同样是硬停档（更硬的提示）。
+        要强行放行加 --force。
+        """
+        if force:
+            return None
+        b = self.budget()
+        if b["spent_cny"] < b["goal"]:
+            return None
+        if b["spent_cny"] >= b["cap"]:
+            return "今日已花 ¥%.2f ≥ 硬上限 ¥%.2f —— 硬停：不派新阶段、不重跑测试（要强行放行：--force）" % (
+                b["spent_cny"], b["cap"])
+        return ("今日已花 ¥%.2f ≥ 目标 ¥%.2f —— 只许收尾、不开新活（拒放行 %s 第 %s 步；"
+                "收尾＝让在跑的步骤交报告并判 done，不需要放行。要强行放行：--force）"
+                % (b["spent_cny"], b["goal"], project, "?"))
 
     def overdue_deliveries(self, minutes=45, limit=20):
         """投给某个角色、过了 minutes 分钟、那个角色还没回话的活。
@@ -1775,7 +1932,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run", "wake-purge",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "ack", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "ack", "budget", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--session", default=None, help="要绑的会话（roles:home-maid 或 hermes）")
@@ -1808,6 +1965,7 @@ def main():
     ap.add_argument("--must-reply", action="store_true")
     ap.add_argument("--q", default="")
     ap.add_argument("--state", default="", help="对接状态：delivered/read/replied/failed（ack 用）")
+    ap.add_argument("--rollover", action="store_true", help="预算：强制重打今日基线（跨天用）")
     ap.add_argument("--minutes", type=int, default=45,
                     help="逾期追问阈值（分钟，默认 45）")
     ap.add_argument("--max", type=int, default=2,
@@ -1889,7 +2047,7 @@ def main():
             mark = {"active": "◀ 进行中", "done": "✔ 已完成", "locked": "🔒 未放行"}.get(state, state)
             print("%-24s #%d %-14s %-24s %s" % (p, s, name, role, mark))
     elif a.cmd == "gate-open":
-        t.gate_open(a.project, a.seq, a.by or "owner.me")
+        t.gate_open(a.project, a.seq, a.by or "owner.me", force=bool(a.force))
         print("已放行：%s 第 %d 步（后面的仍锁着）" % (a.project, a.seq))
         # 放行 = 下一个角色接手的那一刻（"做任务时角色切换"）→ 由经理告知本人
         try:
@@ -2032,6 +2190,9 @@ def main():
         last_nudge = 0.0
         while True:
             try:
+                if _t.strftime("%Y-%m-%d") != (t.state_get("budget_base_date", "") or ""):
+                    b = t.budget(rollover=True)          # 跨天：重打基线，今天的量从 0 起算
+                    print("  预算跨天：基线已重打（今日 ¥%.2f / 上限 ¥%.0f）" % (b["spent_cny"], b["cap"]))
                 r = t.relay_once()
                 if r["delivered"] or r["collected"]:
                     print("  投递=%s 收回答=%s" % (r["delivered"], r["collected"]))
@@ -2046,6 +2207,18 @@ def main():
             except Exception as e:
                 print("  一轮出错：%s" % e)
             _t.sleep(a.poll or 5)
+    elif a.cmd == "budget":
+        r = t.budget(rollover=bool(getattr(a, "rollover", False)))
+        if getattr(a, "json", False):
+            print(json.dumps(r, ensure_ascii=False))
+        else:
+            print("【今日预算】%s（%s价）已花 ¥%.2f / 目标 ¥%.0f / 上限 ¥%.0f · 余 ¥%.2f · %s"
+                  % (r["date"], "高峰" if r["tier"] == "peak" else "空闲", r["spent_cny"],
+                     r["goal"], r["cap"], r["left_to_cap"], r["state"]))
+            for s in r["sessions"]:
+                print("  %s：调用 %d · 进 %d · 缓存 %d · 出 %d · ¥%.2f"
+                      % (s["session"][:22], s["calls"], s["in"], s["cache"], s["out"], s["cny"]))
+            print("  价目表：%s" % r["price_source"])
     elif a.cmd == "ack":
         if a.state:
             r = t.ack(a.id, a.state, a.by or "home.maid", a.text or "", a.to or "")

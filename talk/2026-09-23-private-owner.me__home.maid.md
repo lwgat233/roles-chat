@@ -565,3 +565,17 @@
     · B＝只做界面文案本地化：流量/存储/耗电都是 0，但代价是 1,013 处中文字面量要动，tester 多处以文案断言的判据会失效，还得定「只中文措辞」还是「多语言」。
     我的建议：先做 A、B 暂缓（A 收益明确且与 R-26 复用；B 改动面大、回归风险高）。
     等一句「A / B / A 先 B 后」；不定就先不动 R-30 第 2 步（钱省着）。
+
+[2026-09-23 08:37:52] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1063
+    【切换】renderer 接手：阶段放行：hermes-pocket-R30 第 2 步 实现与出包
+    pipeline.author → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：R30：1/3 · 当前 2 实现与出包(renderer)
+
+[2026-09-23 08:37:52] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1065
+    【切换】renderer 接手：阶段放行：hermes-pocket-R28 第 2 步 实现与出包
+    pipeline.renderer → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：R28：1/3 · 当前 2 实现与出包(renderer)
+
+[2026-09-23 08:38:21] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1067
+    【完成】hermes-pocket-R27 第 2 步「实现与出包」判定完成
+    进度：R27：2/3 · 等 3 复测(tester)
