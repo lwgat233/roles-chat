@@ -1965,6 +1965,8 @@ def main():
     ap.add_argument("--must-reply", action="store_true")
     ap.add_argument("--q", default="")
     ap.add_argument("--state", default="", help="对接状态：delivered/read/replied/failed（ack 用）")
+    ap.add_argument("--json", dest="json", action="store_true",
+                    help="budget 用：输出 JSON（给程序读）")
     ap.add_argument("--rollover", action="store_true", help="预算：强制重打今日基线（跨天用）")
     ap.add_argument("--minutes", type=int, default=45,
                     help="逾期追问阈值（分钟，默认 45）")
