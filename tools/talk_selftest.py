@@ -170,17 +170,22 @@ def run():
         check("阶段初始全部 locked（后面的人收不到活）", boss.blocked_reason("pipeline.auditor") is not None)
         boss.gate_open(WORD, 1, "owner.me")
         check("放行第 1 步后：第 1 步的人能收活", boss.blocked_reason("pipeline.author") is None)
-        check("放行第 1 步后：第 2 步的人仍被卡", boss.blocked_reason("pipeline.renderer") is not None)
+        check("放行第 1 步后：这一步之外的人仍被卡（审计者）",
+              boss.blocked_reason("pipeline.auditor") is not None)
+        # 投递拦截**只拿自检专属角色试**（pipeline.auditor 没有窗口）。
+        # 别拿线上角色试：闸门一旦不拦（它自己在别的项目里有 active 步就不会被拦），
+        # 那段文本会真粘进那个人**正在干活**的窗口（2026-09-23 实测踩过：
+        # renderer 的窗口里被粘进"不该送到的活"，还打断了它的回合）。
+        try:
+            boss.deliver("pipeline.auditor", "不该送到的活")
+            check("阶段没放行时投递被卡", False, "竟然送进去了")
+        except RuntimeError as e:
+            check("阶段没放行时投递被卡", "阶段没放行" in str(e), str(e)[:40])
         # 女仆 2026-09-23 报的「一票否决」：同一个人担任两步（4 复测 / 5 审计）时，
         # 第 5 步没放行**不能**把第 4 步的放行也挡掉（旧口径 blocked_reason 会让闸门自锁）
         boss.gate_open(WORD, 4, "owner.me")
         check("他名下某一步放行后就能收活（后面还有没放行的步骤也不算被卡）",
               boss.blocked_reason("pipeline.auditor") is None)
-        try:
-            boss.deliver("pipeline.renderer", "不该送到的活")
-            check("阶段没放行时投递被卡", False, "竟然送进去了")
-        except RuntimeError as e:
-            check("阶段没放行时投递被卡", True, str(e)[:40])
         try:
             talk.Talk("pipeline.author").gate_open(WORD, 2, "pipeline.author")
             check("非经理不能放行阶段", False, "竟然放行了")
