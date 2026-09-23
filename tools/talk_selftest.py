@@ -197,9 +197,22 @@ def run():
         except ValueError as e:
             check("报告缺字段被拒", True, str(e)[:30])
         # 报告是"角色自己"交的活 —— 用角色自己的连接（管理者不能替别人发言，这条规矩是对的）
-        talk.Talk("pipeline.author").report(WORD, 1, "pipeline.author",
-                                           "做了什么：x（%s）\n证据：y\n判据：z\n依赖：w" % WORD)
-        check("合格报告入库", True)
+        _tpl = ("【{p}#1 功能开发】pipeline.author · 00:00\n做什么：x（{w}）\n证据：y\n判据：z\n依赖：w\n"
+                "本次任务：1 次 · 输入 1 · 输出 1 · ≈¥0.01").format(p=WORD, w=WORD)
+        try:
+            talk.Talk("pipeline.author").report(WORD, 1, "pipeline.author",
+                                                _tpl.replace("【" + WORD, "X" + WORD))   # 首行没标题
+            check("报告没标题被拒", False, "竟然收了")
+        except ValueError as e:
+            check("报告没标题被拒", "标题" in str(e), str(e)[:30])
+        try:
+            talk.Talk("pipeline.author").report(WORD, 1, "pipeline.author",
+                                                _tpl + "\n多出来的一行\n再多一行\n再来一行")   # >8 行
+            check("报告超过 8 行被拒", False, "竟然收了")
+        except ValueError as e:
+            check("报告超过 8 行被拒", "超过" in str(e), str(e)[:30])
+        talk.Talk("pipeline.author").report(WORD, 1, "pipeline.author", _tpl)
+        check("合格报告入库（标题 + 四行 + 成本，≤8 行）", True)
         boss.gate_done(WORD, 1, "owner.me")
         boss.gate_open(WORD, 2, "owner.me")
         check("报告合格后才允许放行下一步", boss.blocked_reason("pipeline.renderer") is None)

@@ -61,3 +61,10 @@
 [2026-09-23 08:14:33] pipeline.author → pipeline.tester | 全体? 否 | 话题:私信-selftest1790122472 | 必读:否 | #937
     private 消息：只给测试者 selftest1790122472
     ↳ 回复 [2026-09-23 08:14:33] pipeline.tester: 收到，判据已加（selftest1790122472）
+
+[2026-09-23 08:18:07] pipeline.author → pipeline.tester | 全体? 否 | 话题:私信-selftest1790122686 | 必读:否 | #954
+    private 消息：只给测试者 selftest1790122686
+
+[2026-09-23 08:18:12] pipeline.author → pipeline.tester | 全体? 否 | 话题:私信-selftest1790122692 | 必读:否 | #960
+    private 消息：只给测试者 selftest1790122692
+    ↳ 回复 [2026-09-23 08:18:12] pipeline.tester: 收到，判据已加（selftest1790122692）

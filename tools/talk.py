@@ -645,11 +645,34 @@ class Talk:
         p, s, name = locked[0][0], locked[0][1], locked[0][2]
         return "他名下全部阶段都还没放行（%s 第 %d 步（%s）…）" % (p, s, name)
 
+    # 交付报告的必备项（2026-09-23 二次收紧：标题 + 四行 + 成本行，整条 ≤8 行）
+    # 每一行接受两种写法：新模板（做/等/成本）与旧写法（做了什么/依赖/本次任务）——老报告别判死。
+    REPORT_FIELDS = ["做", "证据", "判据", "等", "成本"]
+    REPORT_ALIASES = {
+        "做": ("做了什么", "做什么", "做"),
+        "证据": ("证据",),
+        "判据": ("判据",),
+        "等": ("依赖", "等"),
+        "成本": ("本次任务", "成本"),
+    }
+    REPORT_MAX_LINES = 8        # 含标题；超了就是不合格（本人 2026-09-23 定）
+
     def report(self, project, seq, from_role, body):
-        """按固定格式交活：缺字段直接拒绝（格式 = 做了什么/证据/判据/依赖）"""
-        missing = [f for f in self.REPORT_FIELDS if (f + ":") not in body and (f + "：") not in body]
+        """按固定格式交活：不合格直接拒（标题 + 做/证据/判据/等/成本，整条 ≤8 行）"""
+        missing = []
+        for f in self.REPORT_FIELDS:
+            if not any((al + ":") in body or (al + "：") in body for al in self.REPORT_ALIASES[f]):
+                missing.append(f)
         if missing:
-            raise ValueError("交付格式不合格，缺：%s（格式见 README）" % "、".join(missing))
+            raise ValueError("交付格式不合格，缺：%s（模板见 README：首行标题【项目-步号 步名】角色 · HH:MM，"
+                             "然后 做/证据/判据/等/成本，整条 ≤8 行）" % "、".join(missing))
+        lines = [ln for ln in body.splitlines() if ln.strip()]
+        head = lines[0] if lines else ""
+        if not head.lstrip().startswith("【"):
+            raise ValueError("交付格式不合格：首行要是指明内容的标题（【<项目>-<步号> <步名>】<角色全名> · <HH:MM>）")
+        if len(lines) > self.REPORT_MAX_LINES:
+            raise ValueError("交付格式不合格：整条 %d 行，超过 %d 行（一行一件事，原文进证据文件）"
+                             % (len(lines), self.REPORT_MAX_LINES))
         feat = "%s#%d" % (project, seq)
         mid = self.send(from_role, None, "default", "报告 %s" % feat, body, feature=feat)
         # 自检/演练造的假报告**不推给任何人**：跑一次自检就多一条 selftest 报告落到经理窗口
@@ -856,12 +879,16 @@ class Talk:
             act = [st for st in steps if st[3] == "active"]
             if act:
                 s, name, role, _ = act[0]
-                cur = "当前 ◀ 第 %d 步 %s（%s）" % (s, name, role)
+                cur = "%d/%d · 当前 %d %s(%s)" % (done, len(steps), s, name, role.split(".")[-1])
             else:
                 nxt = [st for st in steps if st[3] == "locked"]
-                cur = ("下一步待放行：第 %d 步 %s（%s）" % (nxt[0][0], nxt[0][1], nxt[0][2])
-                       if nxt else "全部步骤已结束")
-            out.append("%s：%d/%d 步完成 · %s" % (p, done, len(steps), cur))
+                cur = ("%d/%d · 等 %d %s(%s)" % (done, len(steps), nxt[0][0], nxt[0][1], nxt[0][2].split(".")[-1])
+                       if nxt else "%d/%d · 已收尾" % (done, len(steps)))
+            short = p
+            for pref in ("hermes-pocket-", "roles-chat-"):
+                if short.startswith(pref):
+                    short = short[len(pref):]
+            out.append("%s：%s" % (short, cur))      # 一行一个项目，别再写"第 N 步…步完成"那串废话
         return "\n".join(out)
 
     def notify_role_switch(self, role, prev=None, reason="", push=True):
