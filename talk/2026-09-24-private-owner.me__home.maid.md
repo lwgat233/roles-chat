@@ -91,3 +91,16 @@
     【切换】author 接手：阶段放行：hermes-pocket-R37 第 1 步 定位与改法（单聊消息头开信息窗）
     pipeline.tester → pipeline.author，接下来由 author 干；项目只列刚动的这条。
     进度：R37：0/3 · 当前 1 定位与改法（单聊消息头开信息窗）(author)
+
+[2026-09-24 20:44:06] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1181
+    【完成】hermes-pocket-R36 第 2 步「界面改动与出包」判定完成
+    进度：R36：2/3 · 等 3 复测(tester)
+
+[2026-09-24 20:44:07] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1182
+    【完成】hermes-pocket-R37 第 1 步「定位与改法（单聊消息头开信息窗）」判定完成
+    进度：R37：1/3 · 等 2 界面改动与出包(renderer)
+
+[2026-09-24 20:44:11] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1184
+    【切换】renderer 接手：阶段放行：hermes-pocket-R37 第 2 步 界面改动与出包
+    pipeline.author → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：R37：1/3 · 当前 2 界面改动与出包(renderer)

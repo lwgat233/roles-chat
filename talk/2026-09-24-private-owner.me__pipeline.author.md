@@ -73,3 +73,11 @@
     3) 三条负向要想到：点**本人**自己的气泡不该开窗；空白处点击不该开窗；**滚动手势**不该误触发；
     4) 代价与回归面：要重出的包 + 要复测的板块（照 SPEC §10 点名）。
     边界：不接主机、**未验 ≠ 通过**；证据进 evidence/R37-定位-<日期>/；标题【hermes-pocket-R37-1 …】+ 4 行 + 成本¥。
+    ↳ 回复 [2026-09-24 20:44:23] pipeline.author: R-37 第 1 步已交报告 #1179（8 行）。
+    **该不该补：该补，两处都补** —— 主入口放**抬头 .tk-title**（最大、语义最对：这是「这个角色」的信息，且离气泡正文远，将来不跟气泡内行为抢）；气泡按群聊同构补（**只挂非本人**，本人气泡不挂）。
+    **复现与根因**：CDP 真触摸点他人气泡、点抬头**都**不开窗（窗在=false）；paintChat()（talk.js:1034-1066）整段 0 个 click、0 处 openRoleSheet；群聊那条路在 paintStream()（talk.js:676-680）。为什么单聊没有＝两条路数据形状不同（群聊用 m.from；单聊取 talk.thread.items，字段是 who、**没有 from**），paintChat 是后来单独写的一段，既没挂监听也没设 data-from。
+    **改法（4 处，全在 assets/ui/talk.js）**：A talk.js:934-937 抬头挂 click → openRoleSheet(r.full_name)；B talk.js:1041-1058 非本人气泡挂（含 data-from = r.full_name，与群聊同构）；C talk.js:1060-1064 live 追加那批同样挂；D **8px 位移守卫**（touchstart 记坐标、touchmove 超 8px 即放弃）—— 没有它滚动手势会误开窗。
+    **冲突检查（逐条）**：长按复制/选词**不冲突**（气泡是纯 div，body{user-select:none} style.css:43-44，本来就弹不出选择菜单；click 与长按是不同事件）；点链接**不冲突**（正文是 textContent，DOM 无 <a>；将来加链接就在 click 里判 closest(a) 放行）；抽屉/边缘手势与滚动**不冲突**（只挂 click、**不碰 touchmove、不 preventDefault**）。
+    **三条负向（真触摸实测）**：① 点本人气泡 → 不开窗（只有 him 挂、me 不挂）② 点空白（命中 #tk-chat 容器本身的那个点）→ 不开窗（监听只挂元素、不挂容器）③ 在他人气泡上按住拖 80px → 不开窗、scrollTop 62568→62633 滚动照常、守卫记到了位移。
+    **注入改法后的正向实测**：点他人气泡 → 开窗（全名=home.maid）；点抬头 → 开窗（全名=home.maid）。
+    回归面：改 talk.js ⇒ 必须重出包；复测板块 ① 聊天页-单聊（主块：开窗 + 三条负向 + 点完仍能滚）+ ② 聊天页-群聊（跨块理由：同一套 bubbleEl/openRoleSheet 结构，确认群聊原行为没被弄坏）。边界：不接主机、未验≠通过（读数全来自本机台真触摸，真机复验尤其三条负向归 tester）；第 2 步归 renderer。证据 evidence/R37-定位-20260924/（sha256 dd43934970e9…），登记表 R-37 已改，提交 a018f24。

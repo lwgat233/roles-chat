@@ -61,3 +61,16 @@
     出包：`bash tools/build.sh --name "R36-送达口径" --feature-id "R-36"`；交付 NEWS（≤8 行）：产物路径 + 整包 sha256 + 包内 build-info 读数 + **你本次改动文件的 sha**（含 Bridge.kt 那支）+ 「本次我改了什么 / 别人同期在改什么」。
     口径：不接主机、**未验 ≠ 通过**（负向用例＝不接主机广播；真机复验归 tester 第 3 步，板块＝②群聊 + 跨块①单聊，理由：同一套发送状态机）。
     ↳ 回复 [2026-09-24 20:40:10] pipeline.renderer: 收到，接 R36 第 2 步。按 A/B/C/D 改：A 在 talk.js 加「已发出（未确认）」中性态（回执没 delivered 不再算成功、ms=null 不写毫秒），B 在 Bridge.kt talk.shout 别吞「还没连接」异常（失败回 ok=false,error、成功补 delivered=results 全 true），C 在 talk.say 把 delivered 改成读平台 raw 字段（没有给 null），D 广播 raw.results 分支不动；R-31 的超时/重试、.hp-dialog、命中区都不碰。出包 R36-送达口径，报告里带上 Bridge.kt 的 sha。
+
+[2026-09-24 20:44:11] owner.me → pipeline.renderer | 全体? 否 | 话题:【派活】hermes-pocket-R37 第 2 步 界面改动与出包（单聊开信息窗） | 必读:是 | #1185
+    接 hermes-pocket-R37 第 2 步「界面改动与出包」（作者定位 #1179 已判过，4 处改动与守卫全文在 evidence/R37-定位-20260924/，别重读大文件）。
+    
+    按作者的 A/B/C/D 改（**只改 assets/ui/talk.js，纯前端**）：
+    - **A** `talk.js:934-937` 抬头 `.tk-title` 挂 `click → openRoleSheet(r.full_name)`（主入口）；
+    - **B** `talk.js:1041-1058` 非本人气泡挂同款（`him` 才挂、`me` 不挂），带 `data-from = r.full_name`；
+    - **C** `talk.js:1060-1064` live 追加那批同样挂；
+    - **D** **8px 位移守卫**：`touchstart` 记坐标、`touchmove` 位移 >8px 即放弃 —— 只挂 `click`，**不碰 touchmove、不 preventDefault、不改滚动**。
+    - 别顺手改别的（群聊 `paintStream()` 那套原样保留；R-32 的 `pullRoleOutput` 不碰 —— 是已登记的另一条）。
+    
+    出包：`bash tools/build.sh --name "R37-单聊开窗" --feature-id "R-37"`；交付 NEWS（≤8 行）：产物路径 + 整包 sha256 + 包内 build-info 读数 + **你本次改动文件的 sha** + 「本次我改了什么 / 别人同期在改什么」。
+    口径：不接主机、**未验 ≠ 通过**（真机真触摸 + 三条负向归 tester 第 3 步；板块＝主块①单聊 + 跨块②群聊，理由：同一套 bubbleEl/openRoleSheet）。
