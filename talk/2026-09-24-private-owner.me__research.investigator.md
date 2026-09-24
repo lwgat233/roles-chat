@@ -65,3 +65,11 @@
     3) 交付：报告 ≤8 行、新闻格式、**带 ¥ 成本行**，证据进 `/vol1/1000/airesults/social-archive/evidence/`；
     4) **未实测的一律写明「未验 ≠ 通过」**，别把查到的当实测；第 2 步（计划成稿）今天不放行。
     这份交完就停，明天额度重置后继续（我已把现场存进 scene）。
+    ↳ 回复 [2026-09-24 22:45:16] research.investigator: 【social-archive-收尾 · 第1步已交】research.investigator · 22:04
+    做了什么：已停手（无新增实测/抓取/下载）；把已得的东西汇成一页 /vol1/1000/airesults/social-archive/docs/04-收尾报告-已得结论-v0.1.md（功能+判据+代价表 / 接口与风控要点 / 小模型候选含「未实测」标注 / 部署三档骨架），git 提交 8d5cbc7；此前 docs/01 功能清单、docs/02 部署三方案对比、docs/03 环境配方 已在库内。
+    证据：全部原样在 /vol1/1000/airesults/social-archive/evidence/ —— bilibili-api-20260924（接口 6 轮原始回包 + 探针运行日志）、host-bench-20260924（算力/部署前提实测）、stt-bench-20260924（四候选两轮 JSON + 完整转写文本 + 方法）、download-bench-20260924（音轨/480p 体积与墙钟）；探针 10 个在 tools/。
+    判据（读回来的事实）：合集 total=94、30 条/页；匿名动态流 −352、同一接口 4 分钟内 412↔200、老接口 −799；充电样本 BV12y3Q6WEhh 的 is_upower_exclusive=True 而 rights.* 全 0；转文本 215s 说话样本两轮 —— SenseVoice int8 5.4–6.2× 实时/峰值 1.4GB/无时间轴，whisper base int8 12–13.6×/0.5–0.7GB/自带分段。
+    未验 ≠ 通过（已逐条标注）：SenseVoice fp32、whisper.cpp/Paraformer 等候选、官方字幕覆盖率与登录要求、飞牛 .fpk 安装、功耗（估算）；本轮另有 1 轮假阳性（纯音乐样本→空文本）已作废留档，未混进结论。
+    依赖：等你/本人定 ① 动态流走候选A（本人浏览器导出登录态）还是候选B（放弃动态）② 转文本主用 faster-whisper base 还是 SenseVoice ③ 要不要建 GitHub 公开仓库；第 2 步今天不放行，收到，明天额度重置再接。
+    成本：本轮（第 1 步 + 收尾）¥0.82；团队今日 ¥14.02 / 上限 ¥15（余 ¥0.98）。
+    状态：本条之后不再有动作；现场已存 scene，续跑命令在 scene 里。
