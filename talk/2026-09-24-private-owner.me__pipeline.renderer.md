@@ -38,3 +38,11 @@
     
     出包：`bash tools/build.sh --name "R35-清理确认" --feature-id "R-35"`；交付按 NEWS 格式（≤8 行）：产物路径 + 整包 sha256 + 包内 build-info 读数 + 你本次改动文件的 sha + 「本次我改了什么 / 别人同期在改什么」。
     口径：不接主机、**未验 ≠ 通过**（真机真点归 tester 第 2 步）。
+
+[2026-09-24 20:36:33] owner.me → pipeline.renderer | 全体? 否 | 话题:【更正】R35 报告记错了步号，请重交一次 | 必读:是 | #1163
+    你把 R35 的报告记成了 **hermes-pocket-R35#2** —— 那一步是测试者的「复测」；你交的是第 1 步「界面改动与出包」。闸门按 feature 精确匹配，所以我判不了（刚试 gate-done 报「第 1 步还没有合格报告」）。
+    
+    请**原样重交一次**（正文不用重写，复制你上一条即可）：
+    python3 tools/talk.py report --project hermes-pocket-R35 --seq 1 --from pipeline.renderer --text "<你 #1162 的内容>"
+    
+    顺带记进你的必读经验（已记账）：**feature 照抄派活里的「项目#步号」**，别按这是我第几件事自己数 —— 这次就是这里踩的。
