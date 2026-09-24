@@ -1722,20 +1722,41 @@ class Talk:
             (limit,)).fetchall()
         if not rows:
             return 0, tgt, ""
-        parts = ["【女仆转发 · 正文未改】"]
+        MAXLEN = 1100        # 单条上限：QQ 会截长消息，超了就分片 (i/n)
+        blocks = []
         for mid, frm, to, topic, body, ts in rows:
-            parts.append("· #%d %s → %s（%s）" % (mid, frm, to or "全体", fmt(ts)))
+            lines = ["【女仆转发 · 正文未改】",
+                     "· #%d %s → %s（%s）" % (mid, frm, to or "全体", fmt(ts))]
             if topic:
-                parts.append("  话题：%s" % topic)
-            for ln in (body or "").splitlines():
-                parts.append("  " + ln)
+                lines.append("话题：%s" % topic)
+            lines.extend((body or "").splitlines())
             # 女仆的注释：这条对本人意味着什么（本人 2026-09-23 要求"女仆要对文本注释"）
-            parts.append("  〔女仆注〕%s" % self._relay_note(mid, topic))
-        text = "\n".join(parts)
+            lines.append("〔女仆注〕%s" % self._relay_note(mid, topic))
+            blocks.append("\n".join(lines))
+        chunks = []
+        for b in blocks:
+            if len(b) <= MAXLEN:
+                chunks.append(b)
+                continue
+            part, outp = [], []
+            for ln in b.splitlines():
+                if part and sum(len(x) + 1 for x in part) + len(ln) > MAXLEN - 12:
+                    outp.append("\n".join(part))
+                    part = []
+                part.append(ln)
+            if part:
+                outp.append("\n".join(part))
+            for i, p in enumerate(outp, 1):
+                chunks.append("%s\n[%d/%d]" % (p, i, len(outp)))
+        self.last_relay_chunks = chunks
+        text = "\n\n".join(chunks)
         if not dry:
             if not tgt:
                 raise RuntimeError("还没设 qq 目标：talk.py setting set qq_target qqbot:<id>")
-            subprocess.run([HERMES_BIN, "send", "-t", tgt, text], check=True)
+            # **一条一条发**（本人 2026-09-24：QQ 有长度限制，别挤成一条）
+            for c in chunks:
+                subprocess.run([HERMES_BIN, "send", "-t", tgt, c], check=True)
+                time.sleep(0.8)          # 别把平台打限流
             for mid, *_ in rows:
                 self.conn.execute("UPDATE notify SET pushed_at=?, channel=? WHERE msg_id=?",
                                   (now_ts(), tgt, mid))
