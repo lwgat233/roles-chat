@@ -104,3 +104,12 @@
     【切换】renderer 接手：阶段放行：hermes-pocket-R37 第 2 步 界面改动与出包
     pipeline.author → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
     进度：R37：1/3 · 当前 2 界面改动与出包(renderer)
+
+[2026-09-24 20:45:19] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1187
+    【完成】hermes-pocket-R35 第 2 步「复测（真点确认/取消）」判定完成
+    进度：R35：2/2 · 已收尾
+
+[2026-09-24 20:45:20] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1189
+    【切换】tester 接手：阶段放行：hermes-pocket-R36 第 3 步 复测
+    pipeline.renderer → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
+    进度：R36：2/3 · 当前 3 复测(tester)
