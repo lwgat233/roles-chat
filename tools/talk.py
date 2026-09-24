@@ -66,6 +66,10 @@ CREATE TABLE IF NOT EXISTS pref(k TEXT PRIMARY KEY, v TEXT);   -- 中转站小�
 CREATE TABLE IF NOT EXISTS delivery(
   msg_id INTEGER, role TEXT, at INTEGER, ok INTEGER, note TEXT, ms INTEGER,
   PRIMARY KEY(msg_id, role));   -- ms = 投递耗时（毫秒，time.monotonic 实测；老库由连接初始化补列）
+-- O-3 拒单台账：预算熔断拒掉的放行（复算"拒过单"靠它，不靠报错文案）
+CREATE TABLE IF NOT EXISTS reject(
+  at INTEGER, kind TEXT, project TEXT, seq INTEGER, role TEXT, by_role TEXT,
+  reason TEXT, spent REAL, goal REAL, cap REAL);
 -- O-2 追问台账：追过谁、第几次、什么时候、结果（去问/问不进去/报本人卡住）
 CREATE TABLE IF NOT EXISTS nudge(
   msg_id INTEGER, role TEXT, at INTEGER, count INTEGER, kind TEXT, note TEXT);
@@ -606,6 +610,10 @@ class Talk:
             raise PermissionError("只有管理者能放行阶段：%s" % by_role)
         _b = self.budget_gate(project, force)
         if _b:
+            b = self.budget()
+            self.reject_log("gate-open", project, seq, self.stage_role(project, seq) if
+                            any(r[1] == seq for r in self.stages(project)) else "?", by_role, _b,
+                            b["spent_cny"], b["goal"], b["cap"])       # O-3：拒单落库
             raise RuntimeError("预算熔断，不放行：%s" % _b)
         rows = list(self.stages(project))
         if not any(r[1] == seq for r in rows):
@@ -1535,11 +1543,12 @@ class Talk:
         if force:
             return None
         b = self.budget()
-        if b["spent_cny"] < b["goal"]:
-            return None
         if b["spent_cny"] >= b["cap"]:
+            # 硬停先判：上限比目标更硬（自检发现：先判目标时，若 cap 被设成比 goal 小，硬停就永远走不到）
             return "今日已花 ¥%.2f ≥ 硬上限 ¥%.2f —— 硬停：不派新阶段、不重跑测试（要强行放行：--force）" % (
                 b["spent_cny"], b["cap"])
+        if b["spent_cny"] < b["goal"]:
+            return None
         return ("今日已花 ¥%.2f ≥ 目标 ¥%.2f —— 只许收尾、不开新活（拒放行 %s 第 %s 步；"
                 "收尾＝让在跑的步骤交报告并判 done，不需要放行。要强行放行：--force）"
                 % (b["spent_cny"], b["goal"], project, "?"))
@@ -1615,6 +1624,23 @@ class Talk:
             self.tell_user("卡住", "有 %d 件事没回音（合并一条，各报一次不再重复）：\n%s"
                            % (len(esc), "\n".join(esc)), frm="owner.me", topic="卡住")
         return out
+
+    def reject_log(self, kind, project, seq, role, by_role, reason, spent, goal, cap):
+        """O-3：预算熔断拒掉的放行也落台账（以前只有报错文案，复测算不出「拒过单」）"""
+        self.conn.execute("INSERT INTO reject(at,kind,project,seq,role,by_role,reason,spent,goal,cap)"
+                          " VALUES(?,?,?,?,?,?,?,?,?,?)",
+                          (now_ts(), kind, project, int(seq or 0), role or "", by_role or "",
+                           reason, float(spent), float(goal), float(cap)))
+        self.conn.commit()
+
+    def rejects_json(self, limit=50):
+        """拒单历史（面板/复算用）：什么时候、拒了谁、为什么、当时花了多少"""
+        rows = self.conn.execute(
+            "SELECT at,kind,project,seq,role,by_role,reason,spent,goal,cap FROM reject"
+            " ORDER BY at DESC, rowid DESC LIMIT ?", (limit,)).fetchall()
+        return {"count": len(rows), "items": [
+            {"at": r[0], "kind": r[1], "project": r[2], "seq": r[3], "role": r[4], "by": r[5],
+             "reason": r[6], "spent": r[7], "goal": r[8], "cap": r[9]} for r in rows]}
 
     def nudge_log(self, msg_id, role, count, kind, note=""):
         """O-2：追问也落台账（追过谁、第几次、什么时候、结果）——以前只存在 pref 的计数里，查不出历史"""
@@ -2007,7 +2033,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run", "wake-purge",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "ack", "budget", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "nudges", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "ack", "budget", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "nudges", "rejects", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--session", default=None, help="要绑的会话（roles:home-maid 或 hermes）")
@@ -2219,6 +2245,8 @@ def main():
         print(json.dumps(t.doctor(), ensure_ascii=False))
     elif a.cmd == "deliveries":
         print(json.dumps(t.deliveries_json(a.lines or 20), ensure_ascii=False))
+    elif a.cmd == "rejects":
+        print(json.dumps(t.rejects_json(a.lines or 50), ensure_ascii=False))
     elif a.cmd == "nudges":
         print(json.dumps(t.nudges_json(a.lines or 50), ensure_ascii=False))
     elif a.cmd == "asks":
