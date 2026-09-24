@@ -1,0 +1,21 @@
+O-1 投递确认落台账 · 原始输出（2026-09-24 20:18:35）
+
+一、改动（tools/talk.py）
+1) delivery 表补两列（连接初始化里幂等 ALTER）：attempts（这次按了几次回车）、confirmed（1=会话消息条数确证+1／0=没确证／NULL=读不到条数）
+2) deliver()：多行分支沿用「看对方会话 user 消息条数有没有+1」并在循环里记 attempts；**单行分支原来不验证**，现在也确证一次（1.5s 后没涨就补一次回车兜底），并把提交耗时先记下（R-31 的 ms 口径不变）
+3) 入口先复位 ms/attempts/confirmed —— 否则被拦/无会话的失败行会显示上一次的旧读数（实测踩到：#1096 曾显示 attempts=1/confirmed=1）
+4) 两处入库（报告路径 + relay_once 路径）写入这两列；deliveries_json 也读出来（面板可显示）
+
+二、台账读数（delivery 表）
+msg_id	role	ok	note	ms	attempts	confirmed
+1095	pipeline.author	1		3343	1	1
+1096	pipeline.auditor	0	角色 pipeline.auditor 没有会话（先 spawn）	3343	1	1
+1105	pipeline.auditor	0	角色 pipeline.auditor 没有会话（先 spawn）	0	0	空
+
+判读：
+· #1095 pipeline.author = 真投递成功：confirmed=1（作者会话 user 消息条数确证 +1）、attempts=1（一次回车就进去了）
+· #1096 = 修正前的失败行：ok=0 但 attempts/confirmed 是**上一次的旧值**（1/1）、ms 也是旧的 3343 → 就是这次改出的毛病，已修
+· #1105 pipeline.auditor = 修正后的失败行：ok=0、note 写明「没有会话」、ms=0、attempts=0、confirmed 空 ✓ 不再留旧值
+
+三、回归：talk_selftest 43/43（证据 evidence/selftest-20260924-201711.txt）
+四、投递耗时：ms 仍是提交时刻的单调时钟差值（本次真投递 3343ms 含 0.12s 键入 + 1.5s 确证等待的提交段）

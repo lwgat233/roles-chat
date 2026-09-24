@@ -171,7 +171,9 @@ class Talk:
                    "ALTER TABLE role ADD COLUMN bind TEXT",
                     "ALTER TABLE msg ADD COLUMN scope TEXT",
                     "ALTER TABLE msg ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0",
-                    "ALTER TABLE delivery ADD COLUMN ms INTEGER"):
+                    "ALTER TABLE delivery ADD COLUMN ms INTEGER",
+                    "ALTER TABLE delivery ADD COLUMN attempts INTEGER",     # O-1：这次投递按了几次回车
+                    "ALTER TABLE delivery ADD COLUMN confirmed INTEGER"):   # O-1：1=确证进了对方会话 /0=没确证 /NULL=没法判
             try:
                 self.conn.execute(sql)
             except sqlite3.Error:
@@ -181,6 +183,8 @@ class Talk:
         #   me        = 本人（用户）：最高权限，看全部含私信，能直达任何角色
         #   owner.me  = 经理（助手，代他指挥角色）：管流程，但**看不到私信内容**
         self.last_deliver_ms = 0      # 上一次投递耗时（毫秒）；没有会话/被拦时为 0
+        self.last_deliver_attempts = 0      # O-1：上一次投递按了几次回车（重试次数+1）
+        self.last_deliver_confirmed = None  # O-1：1=确证进会话 /0=没确证 /None=没法判（被拦、无会话）
         self.admin = (role is None) or (role == "me") or self._has("msg:all", "read")   # 看全部内容（含私信）
         self.manage = self._can_manage()                              # 管理权（改名册/放行阶段/暂停）
         if role:
@@ -697,8 +701,10 @@ class Talk:
                          % (feat, body, project, seq, who))
         except Exception as e:
             ok, note = 0, "报告投递失败: %s" % e
-        self.conn.execute("INSERT OR REPLACE INTO delivery(msg_id,role,at,ok,note,ms) VALUES(?,?,?,?,?,?)",
-                          (mid, who, now_ts(), ok, note, self.last_deliver_ms))          # 报告也记耗时
+        self.conn.execute("INSERT OR REPLACE INTO delivery(msg_id,role,at,ok,note,ms,attempts,confirmed)"
+                          " VALUES(?,?,?,?,?,?,?,?)",
+                          (mid, who, now_ts(), ok, note, self.last_deliver_ms,
+                           self.last_deliver_attempts, self.last_deliver_confirmed))      # 报告也记耗时+确认结果（O-1）
         self.conn.commit()
         return mid
 
@@ -993,6 +999,9 @@ class Talk:
         force=True 连「暂停」也跳过；gate_force=True 只跳过**阶段闸门**（转告/结论类用：
         它们不是派活，锁着的人读到即可）。
         """
+        self.last_deliver_ms = 0            # 先复位：被拦/无会话时不留上一次的旧读数（O-1 修正）
+        self.last_deliver_attempts = 0
+        self.last_deliver_confirmed = None
         if role == "home.maid":
             # 女仆＝本人的 QQ 通道，不往 tmux 投（她也不需要会话）；返回"通道"当投递目标
             return self.setting_get("qq_target") or "qqbot"
@@ -1016,17 +1025,38 @@ class Talk:
             n0 = self._user_msg_count(role)      # 投递前对方会话里的 user 消息条数
             time.sleep(0.8)
             # 对方忙着跑一轮时，粘贴后的回车会被吞 → 看对方会话有没有多出一条 user 消息，没有就再按
+            n1 = n0
             for attempt in range(6):
                 subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=(attempt == 0))
+                self.last_deliver_attempts = attempt + 1
                 time.sleep(2.5)
                 n1 = self._user_msg_count(role)
                 if n0 is None or n1 is None or n1 > n0:
                     break
+            if n0 is None or n1 is None:
+                self.last_deliver_confirmed = None      # 读不到条数，不当证据
+            else:
+                self.last_deliver_confirmed = 1 if n1 > n0 else 0
         else:
             # 单行：直接打字再回车，最稳（不经过粘贴缓冲，TUI 一定能收）
+            # 但**对方正忙着跑一轮时，这一下回车也会被吞**（O-1：以前不验证，丢了也不知道）→ 同样确证一次
+            n0 = self._user_msg_count(role)
             subprocess.run(["tmux", "send-keys", "-t", sess, "-l", text], check=True)
             time.sleep(0.12)
             subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=True)
+            self.last_deliver_attempts = 1
+            self.last_deliver_ms = int(round((time.monotonic() - t0) * 1000))   # 先记提交耗时（R-31 口径不变）
+            time.sleep(1.5)
+            n1 = self._user_msg_count(role)
+            if n0 is not None and n1 is not None and n1 <= n0:
+                subprocess.run(["tmux", "send-keys", "-t", sess, "Enter"], check=False)   # 补一次兜底
+                self.last_deliver_attempts = 2
+                time.sleep(2.5)
+                n1 = self._user_msg_count(role)
+            if n0 is None or n1 is None:
+                self.last_deliver_confirmed = None
+            else:
+                self.last_deliver_confirmed = 1 if n1 > n0 else 0
         subprocess.run(["tmux", "delete-buffer", "-b", buf], check=False,
                        capture_output=True)   # 单行分支没建过缓冲区，删失败不算错（也别吓人）
         self.last_deliver_ms = int(round((time.monotonic() - t0) * 1000))   # 台账记它（R-31）
@@ -1204,9 +1234,10 @@ class Talk:
                 except Exception as e:
                     ok = False
                     text = str(e)
-                self.conn.execute("INSERT OR REPLACE INTO delivery(msg_id,role,at,ok,note,ms) VALUES(?,?,?,?,?,?)",
+                self.conn.execute("INSERT OR REPLACE INTO delivery(msg_id,role,at,ok,note,ms,attempts,confirmed)"
+                                  " VALUES(?,?,?,?,?,?,?,?)",
                                   (mid, who, now_ts(), 1 if ok else 0, text[:120] if not ok else "",
-                                   self.last_deliver_ms))
+                                   self.last_deliver_ms, self.last_deliver_attempts, self.last_deliver_confirmed))
                 sent.append({"id": mid, "to": who, "ok": ok})
             cur = max(cur, mid)
         # 收角色的终端回答 → 记成 reply（他不必自己调函数）
@@ -1388,11 +1419,13 @@ class Talk:
     def deliveries_json(self, limit=20):
         """投递台账（面板显示"谁收了、谁没收、为什么"）"""
         rows = self.conn.execute(
-            "SELECT d.msg_id,d.role,d.ok,d.note,d.at,m.topic,m.body,COALESCE(d.ms,-1) FROM delivery d"
+            "SELECT d.msg_id,d.role,d.ok,d.note,d.at,m.topic,m.body,COALESCE(d.ms,-1),"
+            "COALESCE(d.attempts,-1),d.confirmed FROM delivery d"
             " LEFT JOIN v_msg m ON m.id=d.msg_id ORDER BY d.msg_id DESC, d.role LIMIT ?", (limit,)).fetchall()
         return {"count": len(rows), "items": [
             {"msg": r[0], "role": r[1], "ok": bool(r[2]), "note": r[3] or "", "at": r[4],
-             "topic": r[5] or "", "body": (r[6] or "")[:40], "ms": r[7]} for r in rows]}
+             "topic": r[5] or "", "body": (r[6] or "")[:40], "ms": r[7],
+             "attempts": r[8], "confirmed": r[9]} for r in rows]}
 
     # ---------- 逾期追问：派了活 N 分钟没回音，经理去问一句 ----------
     # 纯告知/状态类不追（它们本来就不需要逐条回话）。
@@ -1464,16 +1497,28 @@ class Talk:
             if d["calls"]:
                 per.append({"session": sid, "calls": d["calls"], "in": d["in"], "cache": d["cache"],
                             "out": d["out"], "cny": round(cny, 4)})
+        # 计划预算：每天 ¥2，从全局 ¥15 里扣，但**不计入 ¥10 限额**（本人 2026-09-24 定）
+        plan = 0.0
+        try:
+            _o = subprocess.run([sys.executable, "/vol1/1000/airesults/person/tools/plan_budget.py"],
+                                capture_output=True, text=True, timeout=90).stdout or ""
+            m = re.search(r"今天已花 ¥([0-9.]+)", _o)
+            if m:
+                plan = float(m.group(1))
+        except Exception:
+            plan = 0.0
+        team = max(0.0, spent - plan)
         goal = float(self.setting_get("budget_goal_cny", "10") or 10)
         cap = float(self.setting_get("budget_cap_cny", "15") or 15)
         if spent >= cap:
             state = "超上限：硬停（不派新阶段、不重跑测试，只报告+等指令）"
-        elif spent >= goal:
-            state = "到目标：只许收尾，不开新活"
+        elif team >= goal:
+            state = "到目标：只许收尾，不开新活（其中计划预算 ¥%.2f 不计入）" % plan
         else:
             state = "正常"
         per.sort(key=lambda x: -x["cny"])
-        return {"date": today, "tier": tier, "spent_cny": round(spent, 4), "goal": goal, "cap": cap,
+        return {"date": today, "tier": tier, "spent_cny": round(spent, 4), "plan_cny": round(plan, 4),
+                "team_cny": round(team, 4), "goal": goal, "cap": cap,
                 "left_to_cap": round(max(0.0, cap - spent), 4), "state": state, "sessions": per,
                 "price_source": (self.prices() or {}).get("source", "")}
 
@@ -2222,9 +2267,9 @@ def main():
         if getattr(a, "json", False):
             print(json.dumps(r, ensure_ascii=False))
         else:
-            print("【今日预算】%s（%s价）已花 ¥%.2f / 目标 ¥%.0f / 上限 ¥%.0f · 余 ¥%.2f · %s"
+            print("【今日预算】%s（%s价）全局已花 ¥%.2f = 团队 ¥%.2f + 计划 ¥%.2f｜目标 ¥%.0f（只算团队）/ 上限 ¥%.0f（算全局）· 余 ¥%.2f · %s"
                   % (r["date"], "高峰" if r["tier"] == "peak" else "空闲", r["spent_cny"],
-                     r["goal"], r["cap"], r["left_to_cap"], r["state"]))
+                     r["team_cny"], r["plan_cny"], r["goal"], r["cap"], r["left_to_cap"], r["state"]))
             for s in r["sessions"]:
                 print("  %s：调用 %d · 进 %d · 缓存 %d · 出 %d · ¥%.2f"
                       % (s["session"][:22], s["calls"], s["in"], s["cache"], s["out"], s["cny"]))
