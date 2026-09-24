@@ -208,3 +208,12 @@
     【切换】investigator 接手：阶段放行：社媒整理平台 第 1 步 调研与功能清单（含转文本选型实测）
     pipeline.author → research.investigator，接下来由 investigator 干；项目只列刚动的这条。
     进度：社媒整理平台：0/3 · 当前 1 调研与功能清单（含转文本选型实测）(investigator)
+
+[2026-09-24 21:15:38] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1241
+    【切换】renderer 接手：阶段放行：hermes-pocket-R32 第 2 步 界面改动与出包
+    research.investigator → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：R32：0/3 · 当前 1 定位与改法（pullRoleOutput 未定义）(author)
+
+[2026-09-24 21:15:39] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1242
+    【完成】hermes-pocket-R32 第 1 步「定位与改法（pullRoleOutput 未定义）」判定完成
+    进度：R32：1/3 · 当前 2 界面改动与出包(renderer)
