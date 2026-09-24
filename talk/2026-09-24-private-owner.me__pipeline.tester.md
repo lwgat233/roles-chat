@@ -122,3 +122,11 @@
 
 [2026-09-24 20:58:49] owner.me → pipeline.tester | 全体? 否 | 话题:【告知】经理角色卡已定：沈知砚（口径不变） | 必读:否 | #1219
     【告知·不用回】本人 2026-09-24 给经理定了角色卡（经理=沈知砚：外冷、话少、指令感强、对标准要求极高）。经理的口吻会变得更短更直接 —— **但交付口径一条没变**：报告 ≤8 行、新闻格式、结论+数字、¥ 实价、证据进文件、按职责分活、静默纪律、预算与收工纪律照旧。判报告仍只按判据+证据，不合格会打回并写清缺哪一条。你们自己的角色书没变，不用重读别人的；只是下次读经理的派活时按这个风格理解（更短、更硬、更少解释）。
+    ↳ 回复 [2026-09-24 21:10:45] pipeline.tester: R38 第 2 步真机复测交付：#1225（8 行）。**本次只测了 1 块：⑧ 频道页（角色列表）**，无跨块。对象说明：R38 未出包 → 装最新可用包 R37（整包 sha256 1d727e3a…），量的是现有布局口径（#app 的 --vh/--vtop 与 .panel-body padding-bottom 24px 自 R37 起没变）。
+    ① 滚到底：滚动容器 .panel-body（无 id），scrollTop 356 / scrollHeight 863 / clientHeight 507（可滚 356 → 真到底）。
+    ② 滚到底后：末卡 home.maid px(12,232,369×63)、「去群聊 →」px(12,526,87×44)，都在可视区、中心 elementFromPoint 命中自己（SPAN.name / BUTTON.tk-act）、与 #composer 重叠 0px；scrollIntoView(nearest) 复看末卡同上。
+    ③ 真触摸两者都真触发：末卡（设备 540,861）→ 信息窗真开（全名 home.maid）；「去群聊 →」（设备 153,1641）→ 可见板块 tab-talk → tab-group、#tk-stream 在、标题「群聊」。
+    ④ 四个数（同一次读数）：.panel-body rect.bottom 594 / #composer rect.top 594 / innerHeight 778 / visualViewport.height 778（offsetTop 0、scale 1）⇒ 上沿成对相等、页内可视区＝innerHeight ⇒ **不是 --vh/--vtop 失配**（你的 612/612 与我的 594/594 是同一条关系的内容差，不是 inset 差）。
+    ⑤ 系统栏/键盘：屏幕 1080×2340、WebView [0,136][1080,2274] → 状态栏 ≈49.5 CSS、导航栏 ≈24 CSS，**都在 WebView 之外**，mInputShown=false → 4 个数里没有系统栏/键盘造成的差额。滚到底后末尾（容器最后一项下沿 570）到 composer 顶 594 的间隙 = **24px**，＝你本地台 24px，＝ .panel-body 的 padding-bottom。
+    ⑥ 判定：**非缺陷 —— 前两轮 hit=false 是"没滚到底"量到的**（未滚底时末卡 y=588 落在固定层带内、与 composer 重叠 57px、命中 TEXTAREA；去群聊 y=882 在视口外）。常驻键 keybar16/composer2、0 未捕获异常。
+    ⑦ 留你定两条：间隙 24px 未达 §10 的 ≥44dp（作者已给 style.css:223 一行改法）要不要抬；本轮我按"只报读数"记。未验≠通过＝不接主机那几条。证据：evidence/R38-复测-20260924/（结论 + 2 份原始输出 json + 截图）。模拟器已停。

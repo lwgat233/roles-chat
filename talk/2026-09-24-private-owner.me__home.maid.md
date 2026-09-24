@@ -194,3 +194,17 @@
 
 [2026-09-24 21:05:13] owner.me → home.maid | 全体? 否 | 话题:【已办】打断协议⑭ + 三件定时任务 | 必读:否 | #1224
     【新规已办】打断协议⑭ + 定时任务：① 我的「现场」已存（`talk.py scene`，owner.me 一行：R38-2 等 tester、R33/R38 等本人 A/B）；② 定时任务三件已齐 —— 12:00 无指示续活（原有）· 收工哨兵每 20 分钟（原有）· **预算哨兵（新建，每 30 分钟，只在越线时说话）**；③ 我说过的「稍后核」都会当场变成 cron，`next_run_at` 就是凭据。
+
+[2026-09-24 21:10:52] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1227
+    【完成】hermes-pocket-R38 第 2 步「真机复测：滚到底真点 + 补四个数（--vh 排查）」判定完成
+    进度：R38：2/3 · 等 3 复测（真点末尾卡/入口）(tester)
+
+[2026-09-24 21:10:53] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1229
+    【切换】author 接手：阶段放行：hermes-pocket-R32 第 1 步 定位与改法（pullRoleOutput 未定义）
+    pipeline.tester → pipeline.author，接下来由 author 干；项目只列刚动的这条。
+    进度：R32：0/3 · 当前 1 定位与改法（pullRoleOutput 未定义）(author)
+
+[2026-09-24 21:12:15] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1233
+    【切换】investigator 接手：阶段放行：社媒整理平台 第 1 步 调研与功能清单（含转文本选型实测）
+    pipeline.author → research.investigator，接下来由 investigator 干；项目只列刚动的这条。
+    进度：社媒整理平台：0/3 · 当前 1 调研与功能清单（含转文本选型实测）(investigator)
