@@ -96,3 +96,10 @@
     3) **改法**（文件:行）+ 会不会影响别的页面（单聊/群聊/设置页共用的滚动容器）；
     4) 代价与回归面：要重出的包 + 要复测的板块（照 SPEC §10 点名，注明"真机点末尾卡"这条必须有）。
     边界：不接主机、**未验 ≠ 通过**；证据进 evidence/R38-定位-<日期>/；标题【hermes-pocket-R38-1 …】+ 4 行 + 成本¥。
+    ↳ 回复 [2026-09-24 20:57:48] pipeline.author: R-38 第 1 步已交报告 #1211（8 行）。**结论要先纠一下：本地台判下来不是遮挡缺陷。**
+    复刻与对照（同页同视口 393×778，只差有没有滚到底）：未滚到底 → 末卡 y=629..689、中心 elementFromPoint 命中 **TEXTAREA**、重叠 **77px**（＝复刻 tester R34-3/R37-3 那两条）；**滚到底（scrollTop=503 到上限）→ 末卡 y=126..186 命中 BUTTON.card、「去群聊 →」y=544..588 在视口内命中 BUTTON.tk-act、重叠 0px**、末尾到 composer 顶间隙 24px。tester 那两条坐标反推 scrollTop 只走了可滚量（503px）的一小部分 —— 他们量在列表中部。
+    固定层清点（重要）：#composer y=612..681（h=69）+ #keybar y=681..778（h=97）＝底部共 166px；**两者都是 #app 这个 flex 列里的流内元素（position:static、z-index 30），不是 fixed 浮层**，只会把 #stage 挤小、不会叠在滚动容器上（.panel-body 的 rect.bottom = composer.top = 612）；两层自带 calc(… + var(--safe-b))。
+    滚动容器：.panel-body（**不存在 #tk-roles 这个元素**，角色卡直接 append 进 #tab-talk）y=85..612、可滚 503px、padding-bottom 24px（**死值、不含 safe-b**）。
+    本地排不掉的一条（要看真机）：本机台没有系统栏/键盘 inset（safe-b=0）。若真机「滚到底也不可达」，成因会是 --vh/--vtop 与可视区失配（#app{top:var(--vtop);height:var(--vh)}，变量由 visualViewport 写在 app.js:188-230）。请 tester 同一次读数补四个数就能定性：.panel-body 的 rect.bottom / #composer 的 rect.top / window.innerHeight / window.visualViewport.height（本地对照＝612 / 612 / 778 / 778 —— 三者一致，所以本地看不到该现象）。
+    改法（按你判，三选）：① **复测口径**：判「末尾卡/末键能不能点」之前必须先滚到底或对目标 scrollIntoView —— 本轮 2/3 轮的红就是这么来的（纯口径，不出包）；② 若要把「末尾到固定层的间隙」抬到 SPEC §10 的 ≥44dp ⇒ style.css:223 的 padding-bottom: 24px → calc(44px + var(--safe-b))（一行；**全 .panel-body 板块共用**，每页底多约 20px 空白）；③ 若真机四个数证实 --vh 失配，那不是 padding 能修的，要改 #app 高度口径（等读数，我不先动）。
+    回归面：走 ① 不出包；走 ② 改 style.css 必须重出包（归 renderer）；复测板块 ⑧ 频道页（主块，**真机滚到底点末尾卡与「去群聊 →」两个都要点到**）+ 跨块 ① 单聊 / ② 群聊 / ③ 设置页（共用 .panel-body）。边界：不接主机、未验≠通过；证据 evidence/R38-定位-20260924/（sha256 dc105b6d8d8e…），登记表 R-38 已改，提交 ac55259 / dc5731d。
