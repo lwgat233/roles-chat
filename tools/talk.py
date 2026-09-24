@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS pref(k TEXT PRIMARY KEY, v TEXT);   -- 中转站小�
 CREATE TABLE IF NOT EXISTS delivery(
   msg_id INTEGER, role TEXT, at INTEGER, ok INTEGER, note TEXT, ms INTEGER,
   PRIMARY KEY(msg_id, role));   -- ms = 投递耗时（毫秒，time.monotonic 实测；老库由连接初始化补列）
+-- O-2 追问台账：追过谁、第几次、什么时候、结果（去问/问不进去/报本人卡住）
+CREATE TABLE IF NOT EXISTS nudge(
+  msg_id INTEGER, role TEXT, at INTEGER, count INTEGER, kind TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS wake(
   msg_id INTEGER, role TEXT, state TEXT, by_role TEXT, why TEXT, at INTEGER, delivered_at INTEGER,
   PRIMARY KEY(msg_id, role));
@@ -1587,6 +1590,7 @@ class Talk:
                     continue
                 self.state_set(key + ":esc", "%d" % now)
                 self.state_set(key, "%d|%d" % (now, count + 1))
+                self.nudge_log(mid, role, count + 1, "escalate", why)
                 esc.append("#%d %s「%s」投出 %d 分钟没回音（%s）"
                            % (mid, role, topic or "-", age, why))
                 out.append((mid, role, age, "已报你：%s" % why, count + 1))
@@ -1601,13 +1605,32 @@ class Talk:
             try:
                 self.deliver(role, text)
                 out.append((mid, role, age, "已问", count + 1))
+                self.nudge_log(mid, role, count + 1, "ask",
+                               "投出 %d 分钟没回音，已追问" % age)
             except Exception as e:
                 out.append((mid, role, age, "问不进去: %s" % e, count))
+                self.nudge_log(mid, role, count, "fail", str(e)[:120])
             self.state_set(key, "%d|%d" % (now, count + 1))
         if esc and not dry:
             self.tell_user("卡住", "有 %d 件事没回音（合并一条，各报一次不再重复）：\n%s"
                            % (len(esc), "\n".join(esc)), frm="owner.me", topic="卡住")
         return out
+
+    def nudge_log(self, msg_id, role, count, kind, note=""):
+        """O-2：追问也落台账（追过谁、第几次、什么时候、结果）——以前只存在 pref 的计数里，查不出历史"""
+        self.conn.execute("INSERT INTO nudge(msg_id,role,at,count,kind,note) VALUES(?,?,?,?,?,?)",
+                          (int(msg_id), role, now_ts(), int(count), kind, note))
+        self.conn.commit()
+
+    def nudges_json(self, limit=50):
+        """追问历史（面板/复算用）：msg_id / 角色 / 第几次 / 时间 / 结果"""
+        rows = self.conn.execute(
+            "SELECT n.msg_id,n.role,n.at,n.count,n.kind,COALESCE(n.note,''),COALESCE(m.topic,'')"
+            " FROM nudge n LEFT JOIN v_msg m ON m.id=n.msg_id ORDER BY n.at DESC, n.rowid DESC LIMIT ?",
+            (limit,)).fetchall()
+        return {"count": len(rows), "items": [
+            {"msg": r[0], "role": r[1], "at": r[2], "count": r[3], "kind": r[4],
+             "note": r[5], "topic": r[6]} for r in rows]}
 
     def asks_json(self):
         """还没答的授权/拍板请求 —— 面板上"谁在等你"就靠它"""
@@ -1984,7 +2007,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run", "wake-purge",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "ack", "budget", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "ack", "budget", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "nudges", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--session", default=None, help="要绑的会话（roles:home-maid 或 hermes）")
@@ -2196,6 +2219,8 @@ def main():
         print(json.dumps(t.doctor(), ensure_ascii=False))
     elif a.cmd == "deliveries":
         print(json.dumps(t.deliveries_json(a.lines or 20), ensure_ascii=False))
+    elif a.cmd == "nudges":
+        print(json.dumps(t.nudges_json(a.lines or 50), ensure_ascii=False))
     elif a.cmd == "asks":
         print(json.dumps(t.asks_json(), ensure_ascii=False))
     elif a.cmd == "answer":

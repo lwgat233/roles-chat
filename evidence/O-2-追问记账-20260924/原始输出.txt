@@ -1,0 +1,23 @@
+O-2 追问记账 · 原始输出（2026-09-24 20:19:42）
+
+一、改动（tools/talk.py）
+1) 新表 nudge(msg_id, role, at, count, kind, note) —— kind: ask=去问了 / fail=问不进去 / escalate=报本人「卡住」
+2) 三条路径都写一行：去问、问不进去、报本人（以前只在 pref 里存 '时间|次数'，查不出历史）
+3) 新命令：python3 tools/talk.py nudges --lines 50（JSON：msg_id/角色/第几次/时间/结果/话题）
+
+二、单元级验证（投递/上报换成记录器，不惊动任何角色；临时投递 #1108，投出 60 分钟）
+   nudge() 返回： [(1108, 'pipeline.author', 60, '已问', 1), (1108, 'pipeline.auditor', 60, '已报你：会话不在', 1)]
+   记录器收到： [('deliver', 'pipeline.author'), ('tell_user', '卡住')]
+   nudge 表落账： [(1108, 'pipeline.author', 1, 'ask', '投出 60 分钟没回音，已追问'), (1108, 'pipeline.auditor', 1, 'escalate', '会话不在')]
+   再跑一次（auditor 撞 fail 分支）返回： [(1108, 'pipeline.auditor', 60, '已问', 1)]
+   nudge 表落账： [(1108, 'pipeline.author', 1, 'ask', '投出 60 分钟没回音，已追问'), (1108, 'pipeline.auditor', 1, 'ask', '投出 60 分钟没回音，已追问')]
+
+三、读账（判据：能列出追问历史 msg/role/次数/时间）
+   nudges_json： {"count": 2, "items": [{"msg": 1108, "role": "pipeline.auditor", "at": 1790252382, "count": 1, "kind": "ask", "note": "投出 60 分钟没回音，已追问", "topic": "【O-2 自检】临时"}, {"msg": 1108, "role": "pipeline.author", "at": 1790252382, "count": 1, "kind": "ask", "note": "投出 60 分钟没回音，已追问", "topic": "【O-2 自检】临时"}]}
+
+四、清理：临时 msg/delivery/pref/nudge 行已删；nudges 读回 = {"count": 0, "items": []}
+
+五、补测 fail 分支（真 deliver 去投一个没有会话的角色 pipeline.auditor → 抛错 → 落 fail 行；不惊动任何真人）
+   nudge() 返回： [(1109, 'pipeline.auditor', 60, '问不进去: 角色 pipeline.auditor 没有会话（先 spawn）', 0)]
+   nudge 表落账： [(1109, 'pipeline.auditor', 0, 'fail', '角色 pipeline.auditor 没有会话（先 spawn）')]
+   清理后 nudges = {"count": 0, "items": []}
