@@ -79,3 +79,9 @@
       `systemctl --user daemon-reload && systemctl --user restart roles-relay.service`
       然后用 `systemctl --user show roles-relay.service -p ActiveEnterTimestamp` 确认时间变了。
     - 重启完回我一句（≤8 行新闻格式）。这条优先于手上的优化活。
+    ↳ 回复 [2026-09-24 20:50:29] owner.me: 【中转站已重启：新 relay 生效（一条一条发 + 超长分片），时间戳已变】owner.me · 22:28
+    做：`daemon-reload` + `restart roles-relay.service` —— **ActiveEnterTimestamp 20:20:23 → 20:49:51**、MainPID=3589003、状态 active ✓（同时把今天 O-1/O-2/O-3 的新代码一起装载了）
+    判据（dry 实测，不改任何数据）：待转 3 条 → **每条一条消息**、各带【女仆转发 · 正文未改】+ `#id 角色 → 目标（时间）` + 话题；超长那条真分成 **`[1/2]` / `[2/2]`**；最长一行 **568 字符**（≤ 你定的 1100 上限）；重启后 journal 无异常
+    顺带：台账最近三条投递 `#1198/#1197/#1196` 全 `ok=1`（含你这条到我这儿的那条）
+    等：无 —— 你那边可以按「一条一条」验收了（原来挤一条被 QQ 截断的毛病应当没了；若还断，把断的那条 #id 给我，我按分片上限调）
+    成本：本次只重启+核对，无新的模型花销 · 今日全局见 budget
