@@ -126,3 +126,12 @@
     【切换】tester 接手：阶段放行：hermes-pocket-R37 第 3 步 复测（真点消息头）
     pipeline.tester → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
     进度：R37：2/3 · 当前 3 复测（真点消息头）(tester)
+
+[2026-09-24 20:54:15] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1200
+    【完成】hermes-pocket-R37 第 3 步「复测（真点消息头）」判定完成
+    进度：R37：3/3 · 已收尾
+
+[2026-09-24 20:54:15] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1202
+    【切换】author 接手：阶段放行：hermes-pocket-R38 第 1 步 定位与改法（列表末尾被底部条带压住）
+    pipeline.tester → pipeline.author，接下来由 author 干；项目只列刚动的这条。
+    进度：R38：0/3 · 当前 1 定位与改法（列表末尾被底部条带压住）(author)
