@@ -265,3 +265,6 @@
     【切换】author 接手：阶段放行：hermes-pocket-R40 第 1 步 定位与改法
     pipeline.tester → pipeline.author，接下来由 author 干；项目只列刚动的这条。
     进度：R40：0/3 · 当前 1 定位与改法(author)
+
+[2026-09-24 22:02:09] owner.me → home.maid | 全体? 否 | 话题:私信 | 必读:否 | #1272
+    在吗
