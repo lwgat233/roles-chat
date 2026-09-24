@@ -571,9 +571,8 @@ class Talk:
 
     def spawn(self, role, profile=None, launch=None):
         """给角色在 roles 会话里开一个**窗口**（幂等）；一个 tmux 装所有角色，不再一个角色一个会话"""
-        if role == "home.maid":
-            # 女仆就是本人的 QQ 通道本身（唯一会话），不需要也不许再开第二个（2026-09-23 用户拍定）
-            raise RuntimeError("home.maid 不需要单独会话：她就是本人的 QQ 通道（唯一），别开第二个")
+        # home.maid 允许开窗口（本人 2026-09-24 改的口径：QQ 通道是女仆**本体/主线**，
+        # 在她自己的 App 里再给一条**第二入口**，两边是同一个女仆的两条对话，不互相替换）
         self._ensure_ready()          # 还没搭就先搭：没有搭建也可以拉起来时搭
         win = win_name(role)
         ensure_tmux_session()
@@ -790,6 +789,36 @@ class Talk:
         out["relay"] = (r.stdout or "").strip() or "unknown"
         return out
 
+    def revive_missing(self, dry=False):
+        """自愈：roles 会话 + 每个角色一个窗口 —— 谁丢了就把谁拉回来（本人 2026-09-24 定）。
+        故意 pause 过的角色不动（静默纪律：没在执行任务的角色不折腾）。"""
+        acts = []
+        if subprocess.run(["tmux", "has-session", "-t", TMUX_SESSION], capture_output=True).returncode != 0:
+            if dry:
+                acts.append(("would-new-session", TMUX_SESSION))
+            else:
+                ensure_tmux_session()
+                acts.append(("new-session", TMUX_SESSION))
+        rows = [r[0] for r in self.conn.execute("SELECT full_name FROM role ORDER BY full_name")]
+        for full in rows:
+            if full in ("home.maid", "me"):
+                continue
+            if self.role_online(full):
+                continue
+            if self.state_of("role:" + full) == "paused":
+                acts.append(("skip-paused", full))
+                continue
+            if dry:
+                acts.append(("would-spawn", full))
+                continue
+            try:
+                sess, created = self.spawn(full)
+                self.set_state("role:" + full, "running", "owner.me", "自愈：会话不在了，重新拉起")
+                acts.append(("spawned", sess) if created else ("already", sess))
+            except Exception as e:
+                acts.append(("fail", "%s：%s" % (full, e)))
+        return acts
+
     def _ensure_ready(self):
         """服务端还没搭？就地搭起来 —— 客户端『拉起他』时也会走到这儿"""
         try:
@@ -829,7 +858,7 @@ class Talk:
     def role_online(self, role):
         """在线 = 他在 roles 里有窗口（或旧的独立会话还活着）；home.maid 恒在线（她在 QQ 通道里）"""
         if role == "home.maid":
-            return True
+            return True          # QQ 通道在 = 女仆在（有窗口时更是在）
         return (win_name(role) in tmux_windows()) or self._alive(self.tmux_session(role))
 
     def say(self, role, body, topic="私信", kind="private", frm="me"):
@@ -2071,7 +2100,7 @@ def main():
                                     "stage-add", "gate", "gate-open", "gate-done", "report", "blocked",
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
-                                    "reg", "wake", "wake-ok", "wake-skip", "wake-run", "wake-purge",
+                                    "reg", "wake", "wake-ok", "wake-skip", "wake-run", "wake-purge", "heal",
                                     "member", "member-add", "member-del", "ask", "answer", "asks", "ack", "budget", "scene", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "nudges", "rejects", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
@@ -2280,6 +2309,14 @@ def main():
             except Exception as e:
                 res["通知"] = "告知失败：%s" % e
         print(json.dumps(res, ensure_ascii=False))
+    elif a.cmd == "heal":
+        acts = t.revive_missing(dry=bool(a.dry))
+        if not acts:
+            print("自愈：%s 会话与全部角色窗口都在，没动手" % TMUX_SESSION)
+        else:
+            print("自愈：%s（%d 条动作）" % (TMUX_SESSION, len(acts)))
+            for k, v in acts:
+                print("  %-16s %s" % (k, v))
     elif a.cmd == "doctor":
         print(json.dumps(t.doctor(), ensure_ascii=False))
     elif a.cmd == "deliveries":
