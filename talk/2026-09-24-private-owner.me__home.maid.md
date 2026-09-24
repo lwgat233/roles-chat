@@ -23,3 +23,12 @@
     【切换】author 接手：阶段放行：hermes-pocket-R34 第 1 步 定位与改法
     pipeline.renderer → pipeline.author，接下来由 author 干；项目只列刚动的这条。
     进度：R34：0/3 · 当前 1 定位与改法(author)
+
+[2026-09-24 20:28:18] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1140
+    【完成】hermes-pocket-R33 第 2 步「界面改动与出包」判定完成
+    进度：R33：2/3 · 等 3 复测（真点+坐标）(tester)
+
+[2026-09-24 20:28:18] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1142
+    【切换】tester 接手：阶段放行：hermes-pocket-R33 第 3 步 复测（真点+坐标）
+    pipeline.author → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
+    进度：R33：2/3 · 当前 3 复测（真点+坐标）(tester)
