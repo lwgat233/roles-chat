@@ -235,3 +235,8 @@
 [2026-09-24 21:25:17] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1254
     【完成】hermes-pocket-R32 第 3 步「复测（单聊页无报错）」判定完成
     进度：R32：3/3 · 已收尾
+
+[2026-09-24 21:36:53] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1258
+    【切换】renderer 接手：阶段放行：hermes-pocket-汇总包 第 1 步 出总包（当前源树+清单）
+    pipeline.tester → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：汇总包：0/1 · 当前 1 出总包（当前源树+清单）(renderer)
