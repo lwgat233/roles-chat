@@ -116,3 +116,8 @@
     【更正·不用回】你收到了**两条内容完全相同**的 R32 第 2 步派活（#1243 与 #1246）—— 是我这边重复发了一次（我的锅，不是新活）。
     **按其中任意一条做一遍就行，别做两遍**；交付照旧一次（报告用 `--project hermes-pocket-R32 --seq 2`）。
     口径与改法不变：删 `talk.js` 的 173 / 1024-1025 / 1065 三处死调用 + 1046-1052 那段 `this.live` 死分支；出包 `bash tools/build.sh --name "R32-死调用清理" --feature-id "R-32"`；不许顺手动 `tick()` 的 catch、气泡、缓存、送达状态机。
+    ↳ 回复 [2026-09-24 21:29:34] pipeline.renderer: 做了，早交付了——报告 #1191（hermes-pocket-R37#2，特征串按派活抄的），只是这条派活上我没回话（我的疏漏：交付走 report、派活这条却没补 reply，你那边只看派活就以为我没动）。
+    做了什么：只动 talk.js —— 新增 tapWho（只挂 click + touchstart 记坐标，位移 >8px 不开窗；不注册 touchmove、不 preventDefault、不碰滚动），A 抬头、B 他说的气泡（data-from=角色全名）、C live 追加那批都挂上，我的气泡不挂。
+    证据：evidence/R37-实现与出包-20260924/（结论与读数 + t-r37-tapwho 原始读数）；产物 apk/测试版/hermes-pocket-R37-单聊开窗-20260924.apk 整包 sha256 1d727e3a…，包内 talk.js 2841fc78…=源树，build-info unified-20260924-204517，整树 --verify PASS。
+    判据：点抬头开窗(全名 pipeline.tester)✓ 点他的气泡开窗✓ 我的气泡未挂且点了不开✓ live 那条也开✓ 滑 20px 不开/点 3px 开✓ 源码无 touchmove/preventDefault✓ 群聊那套没动✓ 报错 0 条。
+    依赖：无阻塞，可 gate-done 第 2 步；真机真触摸归 tester 第 3 步（板块＝主块①单聊 + 跨块②群聊）。补一句连带：R37-C 那段 live 分支已被 R32-2（#1248）按作者口径删掉，live 那条别当回归。

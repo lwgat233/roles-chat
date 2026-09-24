@@ -41,3 +41,11 @@
     - 先看 `python3 tools/talk.py budget`（团队 ¥10/天上限 ¥15）。
     - 被打断先存现场：`talk.py scene --role research.investigator --text "…"`。
     - 第 2 步（计划文档成稿：功能↔板块↔判据一一对应）等第 1 步判完再放行；**代码一律等本人点头**。
+    ↳ 回复 [2026-09-24 21:28:46] research.investigator: 【social-archive-第1步 调研与功能清单】research.investigator · 21:38
+    做：产物在 /vol1/1000/airesults/social-archive/ —— docs/01 功能清单（A抓取/B转文本/C边界/D数据列表/E运维，每条=功能点+为什么+判据带数字+代价）、docs/02 部署三方案对比、docs/03 环境配方；原始证据 4 组在 evidence/；一次性探针 10 个在 tools/。未写任何产品代码。
+    抓取实测：匿名可读 = 合集/系列 + 分组内容（实测合集 total=94、30条/页）+ 投稿列表（30条/页）+ 稿件元数据 + 播放器信息；空间信息与动态流 −352 需登录态；同一接口同 IP 4 分钟内 412↔200、老接口 −799 → 增量+限速+退避是硬需求。
+    边界实测：充电专属只认 is_upower_exclusive（rights.* 全 0、搜索 badgepay 不可靠；样本 BV12y3Q6WEhh 同时带「试看」提示）；本机无可用 GPU（/dev/nvidia* 缺失，转文本只能 CPU）。
+    转文本实测（215s 说话样本 × 两轮）：SenseVoice int8 = 5.4–6.2× 实时/239MB/峰值内存1.4GB/无时间轴/中文最准；whisper base int8 = 12–13.6×/0.5–0.7GB/自带时间轴/个别错字；whisper small 不划算。首轮用纯音乐稿得空文本，判假阳性已作废并留档。
+    部署建议：本期先 A 档（SSH + systemd --user；Linger=yes 与「无免密 sudo」均已实测），飞牛 .fpk 排后（参考实现已在机器上）。
+    未验≠通过：动态流登录后可达性、官方字幕覆盖率、飞牛 .fpk 安装流程、功耗（估算）。
+    等你定：① 动态流走候选A（你浏览器导出登录态）还是候选B（放弃动态）；② 转文本主用 base 还是 SenseVoice；③ 要不要建 GitHub 公开仓库。成本：本轮 ¥0.53（团队今日 ¥9.35/目标 ¥10）。下一：第2步计划文档（功能↔板块↔判据）等放行；代码等你点头。
