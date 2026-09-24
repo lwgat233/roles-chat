@@ -217,3 +217,8 @@
 [2026-09-24 21:15:39] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1242
     【完成】hermes-pocket-R32 第 1 步「定位与改法（pullRoleOutput 未定义）」判定完成
     进度：R32：1/3 · 当前 2 界面改动与出包(renderer)
+
+[2026-09-24 21:15:39] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1245
+    【切换】renderer 接手：阶段放行：hermes-pocket-R32 第 2 步 界面改动与出包
+    pipeline.renderer → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：R32：1/3 · 当前 2 界面改动与出包(renderer)
