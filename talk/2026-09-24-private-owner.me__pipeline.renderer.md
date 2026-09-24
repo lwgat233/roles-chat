@@ -46,3 +46,18 @@
     python3 tools/talk.py report --project hermes-pocket-R35 --seq 1 --from pipeline.renderer --text "<你 #1162 的内容>"
     
     顺带记进你的必读经验（已记账）：**feature 照抄派活里的「项目#步号」**，别按这是我第几件事自己数 —— 这次就是这里踩的。
+    ↳ 回复 [2026-09-24 20:37:03] pipeline.renderer: 已原样重交：报告 #1164（feature=hermes-pocket-R35#1，正文与 #1162 一致）。gate 现在显示 #1「界面改动与出包（清理加确认）」✔ 已完成、#2 复测未放行。#1162 那条我是自己把步号数错了（按「我这轮第二件事」数成 #2），已按你说的记进必读经验并顺手把那条经验的字段补齐（缺 verified 导致 exp_index 报错，现在 28 条只剩别人名下那两处）。以后交报告前先对照派活里的「项目#步号」，交完用 feature 自查一遍。
+
+[2026-09-24 20:40:02] owner.me → pipeline.renderer | 全体? 否 | 话题:【派活】hermes-pocket-R36 第 2 步 界面改动与出包（送达口径：已发出未确认） | 必读:是 | #1171
+    接 hermes-pocket-R36 第 2 步「界面改动与出包」（作者定位 #1166 已判过：**判定＝假成功**，路径清点与改法全文在 evidence/R36-定位-20260924/，别重读大文件）。
+    
+    按作者的 A/B/C/D 改（口径我已收下，不用再判）：
+    - **A** `assets/ui/talk.js:1176-1186`：回执里**没有 delivered 不再算成功**；新增第三态「**已发出（未确认）**」（`ms=null`、**不写毫秒**）；`sendStateText`(1080-1089) 与 `fillSends`(1090-1100) 各加这一支中性态。
+    - **B** `Bridge.kt:748-752`（talk.shout）：**别吞「还没连接」异常** —— 失败回 `ok=false,error`；成功时补填 `delivered = results 全 true`。
+    - **C** `Bridge.kt:763-764`（talk.say）：`delivered` 改读**平台 raw 里的 delivered 字段**（没有就给 `null`，别拿「命令没抛错」当投成）。
+    - **D** 广播有 `raw.results` 的分支**不动**（那支已经是对的：连主机时「1/2 已送达 1491ms」+逐角色 ✓/✗）。
+    - 不许顺手改别的：R-31 的 3s/8s 超时与重试、`.hp-dialog`、命中区都不碰。
+    
+    出包：`bash tools/build.sh --name "R36-送达口径" --feature-id "R-36"`；交付 NEWS（≤8 行）：产物路径 + 整包 sha256 + 包内 build-info 读数 + **你本次改动文件的 sha**（含 Bridge.kt 那支）+ 「本次我改了什么 / 别人同期在改什么」。
+    口径：不接主机、**未验 ≠ 通过**（负向用例＝不接主机广播；真机复验归 tester 第 3 步，板块＝②群聊 + 跨块①单聊，理由：同一套发送状态机）。
+    ↳ 回复 [2026-09-24 20:40:10] pipeline.renderer: 收到，接 R36 第 2 步。按 A/B/C/D 改：A 在 talk.js 加「已发出（未确认）」中性态（回执没 delivered 不再算成功、ms=null 不写毫秒），B 在 Bridge.kt talk.shout 别吞「还没连接」异常（失败回 ok=false,error、成功补 delivered=results 全 true），C 在 talk.say 把 delivered 改成读平台 raw 字段（没有给 null），D 广播 raw.results 分支不动；R-31 的超时/重试、.hp-dialog、命中区都不碰。出包 R36-送达口径，报告里带上 Bridge.kt 的 sha。

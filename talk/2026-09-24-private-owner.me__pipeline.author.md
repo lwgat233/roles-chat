@@ -54,3 +54,22 @@
     3) 若不是（有真回执）：把**证据**拿出来（回执从哪来、msg id、时间戳），一句说清就行；
     4) 代价与回归面：要重出的包 + 要复测的板块（照 SPEC §10 点名）。
     边界：不接主机、**未验 ≠ 通过**；证据进 evidence/R36-定位-<日期>/；报告标题【hermes-pocket-R36-1 …】+ 4 行 + 成本¥。
+    ↳ 回复 [2026-09-24 20:37:32] pipeline.author: R-36 第 1 步已交报告 #1166（8 行）。
+    **判定：是假成功**，你的怀疑成立。逐条走真 send() 实测：广播+不接主机 → `data-state=sent`、文案「我 → 全体（广播） · 已送达 ≈3ms」（那个 ms 是**界面往返**，不是投递耗时；真机 ≈29ms 同一条路径）。
+    根因两处：① `talk.js:1181` `const ok = (bridged === null) ? true : !!bridged;` —— **回执里没有 delivered 就默认成功**；`talk.js:1183-1184` 没平台 ms 就退回界面往返毫秒并打 ≈。② `Bridge.kt:748-752`（talk.shout）runCatching **吞掉「还没连接」异常后无条件 ok**、只填 `{broadcast:true, raw:{}}`（从不填 delivered）；`Bridge.kt:763-764`（talk.say）`delivered = r.isSuccess`（= 命令没抛错）**不是平台回报的投递结果**。
+    会误报的路径（3 条）：广播+不接主机；回包缺 delivered 字段；**平台 raw 明说 `delivered:false` 而桥说成功 → 照样「已送达」**（最隐蔽，连着主机也会中）。不会误报的（4 条真读数）：广播连主机走 raw.results →「1/2 已送达 1491ms」+逐角色 ✓/✗；桥 delivered:false →「没送达」；桥报真错 `{t:"err"}` →「没送达：还没连接」；桥不回 → 3s「还在发…」/8s「超时」。
+    改法：A `talk.js:1176-1186` 缺 delivered 不算成功、新增第三态「**已发出（未确认）**」（ms=null，不写毫秒；sendStateText 1080-1089 与 fillSends 1090-1100 各加一支中性态）；B `Bridge.kt:748-752` 别吞异常（失败回 ok=false+error，成功补填 delivered=results 全 true）；C `Bridge.kt:763-764` 的 delivered 改读**平台 raw 的 delivered**（没有给 null）；D 广播 results 分支不动（已经对）。
+    回归面：改 talk.js + Bridge.kt ⇒ 必须重出包；复测板块 ② 群聊（广播状态行：连着/不接主机两种，负向用例就是本条）+ ① 单聊（delivered:false / 缺字段 / 平台 raw 说没投成 三种）；跨块理由＝同一套发送状态机（talk.js:1160-1200）。
+    顺带：修完后「≈ms」不再冒充送达耗时 —— R-31 的迟滞数字只认平台 ms（如 1491ms）才可信。边界：不接主机、未验≠通过（读数全来自本机台，真机负向复验归 tester）；第 2 步归 renderer。证据 evidence/R36-定位-20260924/（sha256 f0d92f5490b9…），登记表 R-36 已改，提交 eb1c27c。
+
+[2026-09-24 20:40:16] owner.me → pipeline.author | 全体? 否 | 话题:【派活】hermes-pocket-R37 第 1 步 定位（单聊消息头开信息窗） | 必读:是 | #1178
+    接 hermes-pocket-R37 第 1 步「定位与改法」（只定位、只出改法，不写代码）。
+    
+    来源：测试者 R34-3 真机复测的红 —— **单聊页点消息头点不开信息窗**（真触摸后 `#tk-sheet` 不出现），并给了代码同证：`paintChat()` 整段 **0 个 click 监听、0 处 openRoleSheet**；只有 `paintStream()` 给非本人气泡挂了 click→openRoleSheet。登记表 R-37 有原文。
+    
+    要交（≤8 行、新闻格式、¥实价）：
+    1) **该不该补**：单聊页点哪块打开信息窗才顺手（消息头？气泡？头像位？）—— 现有 `paintStream` 的「点非本人气泡→openRoleSheet」在单聊页为什么没有；
+    2) 若该补：**改法**（文件:行）+ **冲突检查**：会不会抢掉已有的点按行为（长按复制、点链接、抽屉手势）？
+    3) 三条负向要想到：点**本人**自己的气泡不该开窗；空白处点击不该开窗；**滚动手势**不该误触发；
+    4) 代价与回归面：要重出的包 + 要复测的板块（照 SPEC §10 点名）。
+    边界：不接主机、**未验 ≠ 通过**；证据进 evidence/R37-定位-<日期>/；标题【hermes-pocket-R37-1 …】+ 4 行 + 成本¥。
