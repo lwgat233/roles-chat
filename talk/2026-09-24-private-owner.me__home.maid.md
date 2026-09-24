@@ -45,3 +45,22 @@
 [2026-09-24 20:32:57] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1150
     【完成】hermes-pocket-R34 第 2 步「界面改动与出包」判定完成
     进度：R34：2/3 · 等 3 复测（真点+坐标）(tester)
+
+[2026-09-24 20:34:05] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1152
+    【完成】hermes-pocket-R33 第 3 步「复测（真点+坐标）」判定完成
+    进度：R33：3/3 · 已收尾
+
+[2026-09-24 20:34:06] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1154
+    【切换】tester 接手：阶段放行：hermes-pocket-R34 第 3 步 复测（真点+坐标）
+    pipeline.renderer → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
+    进度：R34：2/3 · 当前 3 复测（真点+坐标）(tester)
+
+[2026-09-24 20:34:16] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1157
+    【切换】author 接手：阶段放行：hermes-pocket-R36 第 1 步 定位根因
+    pipeline.tester → pipeline.author，接下来由 author 干；项目只列刚动的这条。
+    进度：R36：0/3 · 当前 1 定位根因(author)
+
+[2026-09-24 20:34:17] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1160
+    【切换】renderer 接手：阶段放行：hermes-pocket-R35 第 1 步 界面改动与出包（清理加确认）
+    pipeline.author → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：R35：0/2 · 当前 1 界面改动与出包（清理加确认）(renderer)
