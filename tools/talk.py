@@ -494,6 +494,9 @@ class Talk:
         if "bind" not in cols:
             self.conn.execute("ALTER TABLE role ADD COLUMN bind TEXT")
             self.conn.commit()
+        self.conn.execute("CREATE TABLE IF NOT EXISTS scene("
+                          "role TEXT PRIMARY KEY, text TEXT, updated_at INTEGER)")
+        self.conn.commit()
         mcols = [r[1] for r in self.conn.execute("PRAGMA table_info(msg)")]
         for col, ddl in (("scope", "ALTER TABLE msg ADD COLUMN scope TEXT"),
                          ("hidden", "ALTER TABLE msg ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")):
@@ -1553,6 +1556,21 @@ class Talk:
                 "收尾＝让在跑的步骤交报告并判 done，不需要放行。要强行放行：--force）"
                 % (b["spent_cny"], b["goal"], project, "?"))
 
+    def scene_set(self, role, text):
+        """存"现场"：被中断时留一句（做到哪 / 下一步 / 未提交改动 / 续跑命令），下次接着做。"""
+        self.conn.execute("INSERT OR REPLACE INTO scene(role,text,updated_at) VALUES(?,?,?)",
+                          (role, text, now_ts()))
+        self.conn.commit()
+        return "已记现场：%s" % role
+
+    def scene_get(self, role):
+        r = self.conn.execute("SELECT text,updated_at FROM scene WHERE role=?", (role,)).fetchone()
+        return {"role": role, "text": r[0] if r else "", "at": r[1] if r else 0}
+
+    def scene_list(self):
+        rows = self.conn.execute("SELECT role,text,updated_at FROM scene ORDER BY updated_at DESC").fetchall()
+        return [{"role": a, "text": b, "at": c} for a, b, c in rows]
+
     def overdue_deliveries(self, minutes=45, limit=20):
         """投给某个角色、过了 minutes 分钟、那个角色还没回话的活。
 
@@ -2054,7 +2072,7 @@ def main():
                                     "watch", "init", "rebuild", "roles-json", "sessions-json", "solo",
                                     "attach", "since-json", "setting", "notify", "relay",
                                     "reg", "wake", "wake-ok", "wake-skip", "wake-run", "wake-purge",
-                                    "member", "member-add", "member-del", "ask", "answer", "asks", "ack", "budget", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "nudges", "rejects", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
+                                    "member", "member-add", "member-del", "ask", "answer", "asks", "ack", "budget", "scene", "role-edit", "role-del", "thread", "say", "relay-once", "relay-daemon", "nudge", "nudges", "rejects", "deliveries", "tell", "doctor", "setup", "switch", "session-del", "session-say", "bind", "unbind", "hermes-sessions"])
     ap.add_argument("--launch", default=None)
     ap.add_argument("--tmux", default=None)
     ap.add_argument("--session", default=None, help="要绑的会话（roles:home-maid 或 hermes）")
@@ -2336,6 +2354,16 @@ def main():
             except Exception as e:
                 print("  一轮出错：%s" % e)
             _t.sleep(a.poll or 5)
+    elif a.cmd == "scene":
+        if a.text:
+            print(t.scene_set(a.role, a.text))
+        elif a.role:
+            s = t.scene_get(a.role)
+            print("【现场】%s（%s）\n%s" % (s["role"], fmt(s["at"]) if s["at"] else "-", s["text"] or "（空）"))
+        else:
+            for s in t.scene_list():
+                print("%-18s %s  %s" % (s["role"], fmt(s["at"]) if s["at"] else "-",
+                                        (s["text"] or "").splitlines()[0][:50]))
     elif a.cmd == "budget":
         r = t.budget(rollover=bool(getattr(a, "rollover", False)), force=bool(getattr(a, "force", False)))
         if getattr(a, "json", False):
