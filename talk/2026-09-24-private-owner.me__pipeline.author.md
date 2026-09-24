@@ -145,3 +145,11 @@
     
     边界：不接主机、**未验 ≠ 通过**；证据进 `evidence/R40-定位-<日期>/`；标题【hermes-pocket-R40-1 …】+ 4 行 + 成本¥。
     （你手上还有 R-41「App 回车不发送」排队 —— 本条交完再接那条，别并行。）
+    ↳ 回复 [2026-09-24 22:09:09] pipeline.author: R-40 第 1 步已交报告 #1277（8 行）。三处现状实测 + 编号/去重/命名都给定了。
+    现状（真回包 + 本机真 tmux 原文）：⑤会话页 panels.js:821-859 只有 **2 行 tmux 容器**（`hermes | 窗口 1 …`、`roles | 窗口 6 …`）——**0 条"人"、0 编号**（6 个角色全装在 roles 容器里，这就是"看不出谁指向我"的现场）；⑧频道页「上次聊过」talk.js:706-780 只有一组「历史（14）」、14 行全是 `X · 历史和话（hermes session）`、0 编号；角色卡 talk.js:519 副行 / 信息窗 talk.js:824「会话」行用的是**合成名** `sess()`（talk.js:137 `role-*`，只跟一条已废记录撞上）。
+    编号怎么取：`talk.sessions[].id`（App 早就在拿，talk.js:709）；`role → session` 按 `s.role === role.full_name` 匹配、**多条取 `alive=true`**（都 false 取 `last_used` 最大）、一条都没有 ⇒ **不显号**（写「未起会话」）——**前端不造号**；会话页与信息窗**共用同一映射**（同号同人）。显示例：`#6 · owner-me`、`#10 · pipeline-author`、`#4 · 本人-女仆通道`。
+    去重（写清）：**按 `tmux`（`会话:窗口` 全名）去重，不按 role** —— 同 tmux 只留 alive 那条；**绝不按 role**（QQ 通道是本体、App 入口只是第二入口，按 role 会把这两条合掉）；同 role 多条都显示、废的标「（已废）」；solo 归「临时对话」；容器 roles/hermes 不成行。（本轮同 tmux 重复=0；老快照有 #3 role-pipeline-author 与 #10 roles:pipeline-author 同 role 两条。）
+    命名统一：窗口名直接用 tmux 冒号后半段，QQ 通道显示「本人-女仆通道」。⚠ 一处素材差异要你知会：需求文档写它「在 hermes 会话里」，真值是 tmux=qqbot:3FDE0CB3E30CD63FC5C635B4C657C844（hermes 那个容器只有 1 个窗口）——我按本人叫法渲染，没改文档。
+    顺带缺陷③（同一处一并修）：talk.js:710/711 读 `r.roles`，而 roles-json 顶层只有 `scenes`/`channels` ⇒「在线/没在线」分组永远不出现、`known` 恒空 ⇒ 同一个人可能列两条（角色卡 + 历史）→ 改用 scenes 展平（与 refreshRoles talk.js:195-203 一致）。
+    改法落点：talk.js:137 换 `sessInfo(full)`（数据取已缓存的 talk.sessions，不新增请求）· talk.js:519 · talk.js:824 · panels.js:821-859（会话页主数据源换成 talk.sessions，tmux.list 只用于 join 活读数）· talk.js:710 修缺陷③；sessionSheet 弹窗也显示 #id。回归面：主块 ⑤会话页 + ⑧频道页，跨块 ①单聊（信息窗同源 talk.js:679）；改 talk.js + panels.js ⇒ 必须重出包（归 renderer）。
+    边界：不接主机、未验≠通过（读数全来自本机台，夹具＝平台真回包 + 本机真 tmux 原文；真机复验含"随便点一条能说出是谁"归 tester）。证据 evidence/R40-定位-20260924/（sha256 269774fc03ea…），登记表 R-40 已改，提交 cf3d53b。
