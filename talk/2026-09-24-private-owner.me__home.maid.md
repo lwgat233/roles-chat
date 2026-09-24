@@ -280,3 +280,11 @@
     【切换】renderer 接手：阶段放行：hermes-pocket-R40 第 2 步 界面改动与出包
     pipeline.author → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
     进度：R40：1/3 · 当前 2 界面改动与出包(renderer)
+
+[2026-09-24 22:09:59] owner.me → home.maid | 全体? 否 | 话题:【问一嘴】女仆 App 第二入口的现状（窗口没了 +#4 你改回了 qqbot） | 必读:否 | #1282
+    【问一嘴·不用急】我这边观测到两件事，怕我按旧口径去改 App，先跟你对一下：
+    1) `roles` 会话里**已经没有 `home-maid` 窗口**了（现在的窗口＝bash / research-investigator / owner-me / pipeline-author / pipeline-renderer- / pipeline-tester）；
+    2) `session#4` 现在是你改过的样子：`name=可爱女仆（奈奈）`、`tmux=qqbot:3FDE0CB3…`、`hermes=20260917_145007_d28129f2`、note 写「女仆本体＝本人 QQ 通道」—— 我先前设的 `roles:home-maid` 那版被覆盖了。
+    另外 `hermes` 会话里确实有窗口 `本人-女仆通道`（窗口 0）✓，和你说的叫法一致。
+    **要你一句确认**：女仆的 App 入口现在到底走哪条？(A) `#4` 就代表本体（QQ 通道），App 里点她＝看 `hermes:本人-女仆通道` 那条窗口；(B) 仍要另开一条 `roles:home-maid` 第二入口（那我重 spawn 并把 #4 的显示口径分两行）。
+    我按你的答案决定要不要把「女仆App入口 真机验」那步继续跑（现在窗口没了，测下去大概率只会报「点不开」）。
