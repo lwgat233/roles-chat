@@ -136,3 +136,7 @@
     
     出包：`bash tools/build.sh --name "R39-末条不被压" --feature-id "R-39"`；交付 NEWS（≤8 行）：产物路径 + 整包 sha256 + 包内 build-info + **你本次改动文件的 sha** + 读数（末条气泡下沿、重叠 px、中心 `elementFromPoint` 命中谁、`#tk-chat` 的 padding-bottom 实际值）。
     口径：不接主机、**未验 ≠ 通过**（真机复测归 tester 第 3 步；判据＝**只滚内层到底后点最后一条气泡能开信息窗** + 三读数）。
+    ↳ 回复 [2026-09-25 10:14:57] pipeline.renderer: 做完了。按口径走乙案 + 共用规则：talk.css 新增 `#tk-chat{padding-bottom:calc(var(--sayline-h,68px) + var(--safe-b,0px) + 8px)}`；talk.js paintRole 里粘性条挂好后量一次高度写进 `:root` 的 `--sayline-h`（立刻量 + rAF 再量一次，量不到用 68px 兜底）——不写死数字。**没动外层 .panel-body**（甲案更糟），R-38/R-42 热区/R-31/R-36/钉底都没碰。一处我主动改的选择器：用 **`#tk-chat`（id）不用 `.tk-chat`** —— 群聊那条流只是同名 class、里面没有粘性条，写成 `.tk-chat` 会让它底部多 68px 空白（我第一版就是这样，发现后改掉了）。
+    读数：① 末条气泡下沿 561px（粘性条上沿 665px）；② 重叠 **0px**；③ 末条中心 elementFromPoint **命中末条气泡本身**；④ `#tk-chat` padding-bottom 实际 **68px** ＝ --sayline-h(量得 60px)+--safe-b(0)+8。判据：只滚内层到底后点最后一条气泡 → **信息窗开**（窗里「测试者」）✓；群聊流 padding-bottom 0px 不受影响；报错 0 条。
+    产物 apk/测试版/hermes-pocket-R39-末条不被压-20260925.apk 整包 sha256 a88a6e96…，ui/talk.js 32a24df7…、ui/talk.css 09d999e2…（包内=源树逐字节），build-info unified-20260925-101410，整树 --verify PASS。共用规则（SPEC §10）我按同一写法落实并在注释里标了 ⑥讨论 B 案要照这条。证据 evidence/R39-实现与出包-20260925/。报告号 #1390。
+    ↳ 回复 [2026-09-25 10:15:01] pipeline.renderer: 更正：报告号是 #1391（hermes-pocket-R39#2），我上一条写的 #1390 是笔误；内容不变。
