@@ -65,3 +65,12 @@
     【切换】tester 接手：阶段放行：hermes-pocket-R41 第 5 步 复测（真机 Gboard 回车）
     pipeline.renderer → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
     进度：R41：4/5 · 当前 5 复测（真机 Gboard 回车）(tester)
+
+[2026-09-25 09:44:07] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1342
+    【完成】hermes-pocket-R41 第 5 步「复测（真机 Gboard 回车）」判定完成
+    进度：R41：5/5 · 已收尾
+
+[2026-09-25 09:44:07] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1344
+    【切换】author 接手：阶段放行：hermes-pocket-R42 第 1 步 定位与改法
+    pipeline.tester → pipeline.author，接下来由 author 干；项目只列刚动的这条。
+    进度：R42：0/3 · 当前 1 定位与改法(author)

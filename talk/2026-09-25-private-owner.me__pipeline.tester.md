@@ -101,3 +101,11 @@
     6) 0 未捕获异常/0 console.error；常驻按键/遮挡照旧量。
     
     口径：**不接主机、未验 ≠ 通过**（「对方会话条数 +1」这条请一定数出来，它是本步最硬的判据）；报告标题【hermes-pocket-R41-5 …】+ 4 行 + 成本¥，第一条写「本次测了哪几块 + 为什么跨」；证据进 `evidence/R41-复测2-20260925/`。
+    ↳ 回复 [2026-09-25 09:43:59] pipeline.tester: R41 第 5 步复测交付：#1341（8 行）。**本次测了 3 块**：主块①单聊 ＋ 主块②群聊 ＋ 跨块⑧频道页（授权框）；跨测理由＝三处共用同一套 bindEnterSend（调用点 550/657/1128），改公共函数必须三块分别真机点；手法与上轮出红那次完全一致。
+    【核心判据＝红转绿】单聊 #tk-sayin：输入法打字造出组字态后**立刻**回车 → **talk.say 0→1**、状态行「我 → 功能创造者 · 已送达 1234ms」、rpc 参数 `{role:"pipeline.author",body:"R41-B-imeR41b-ime1",kind:"private"}`、输入框清空（上轮同一手法：0 次 / 0 气泡 / 文字留在框里）。
+    【群聊】#tk-shoutin 打字后回车 → talk.shout 0→1、状态行「我 → 全体（广播） · 1/1 已送达 1234ms」。【授权框】回车 → talk.answer 0→1 + toast「答复已回给 pipeline.author」。
+    【组字态兜底＝绿】打字后立刻回车发 ✓；打字后**等 1800ms** 再回车也发（talk.say 1→2）✓；两次 keydown 都是 isComposing=true（原文在 json）⇒ 1.5s 复位真生效，不是"恰好没组字态"。
+    【连按口径，如实报】三连击(<400ms) 只 +1 条 ✓；间隔 600ms 连按两次只 1 条 —— 原因是**发完就清空**、第二次回车时框里没内容（走"空文本不发"分支），**不是防连点挡的**；中间重新输入再回车是 2 条 ⇒ R-31 口径照旧，不判红。
+    【红：Shift+Enter 会误发】`input keycombination 59 66`（模拟实体键盘）后**消息真发出去了**：序列 `keydown Shift(shiftKey=false)` → `keydown Enter(shiftKey=true，主路拦住了)` → `keyup Shift(shiftKey=true ⇒ shiftDown=true)` → `keyup Enter(shiftKey=false ⇒ shiftDown 被这次 keyup 覆盖成 false)` ⇒ keyup 那条兜底发送。实测 talk.say 1 次、body `R41-shift-seq`、输入框清空。根因线索：keyup 里的 `shiftDown = e.shiftKey` 覆盖了 keydown 的判定（Shift 先松、Enter 后松是常见顺序）。之后普通回车仍能发（不粘滞 ✓）。修法请 author 定（我没有改代码的授权）。
+    【「对方会话条数 +1」＝未验（不接主机）】App 的 rpc 走到原生传输层就出不了本机，我数不到 ~/.hermes/state.db 那条 +1；替它数＝我自己造一条、会污染别人的会话，且不算"App 发出去的"，所以不做。已把复核口径存进证据：台账最近真投递 `delivery(msg_id=1328, role=pipeline.author, ok=1, ms=6029)`；pipeline.author 会话 `session_id=20260922_210353_677b99`、当前 `messages=1138` ⇒ **放行一次主机连接即可复算 +1**（要的话给我一次机会，我 30 秒内出数）。
+    0 未捕获异常 / 0 console.error；常驻键 keybar16/composer2。未验另含：真机多输入法（只有 Gboard）、Shift 结论是模拟实体键盘、keyCode===229 那条分支没造出对应事件。证据：evidence/R41-复测2-20260925/（结论 6610bdea2291 + 4 份原始输出 json + 条数口径参照）。模拟器已停。
