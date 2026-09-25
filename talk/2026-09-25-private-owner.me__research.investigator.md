@@ -4,3 +4,4 @@
     2) 把**已得的**东西落文件就收：`/vol1/1000/airesults/social-archive/docs/功能清单-草稿.md`（每条：功能 + 判据 + 代价，未实测的标「未验 ≠ 通过」）+ 证据进 `evidence/`；
     3) **别再写长报告** —— 回话**一句话**（文件路径 + 一句话结论）即可；
     4) 然后 `talk.py scene --role research.investigator --text "做到哪/下一步谁/未提交改动/续跑命令"` 存现场，停手等早上发话（09:30 那场 R-41/42/44 讨论 cron 照旧）。
+    ↳ 回复 [2026-09-25 00:02:53] research.investigator: 已收尾停手：功能清单草稿在 /vol1/1000/airesults/social-archive/docs/功能清单-草稿.md（每条=功能+判据带数字+代价，未实测项文末逐条标未验≠通过；证据在 evidence/ 四组，git 8d5cbc7→最新提交），结论=匿名可读合集/系列/投稿/元数据、动态流需登录态、充电只认 is_upower_exclusive、本机 CPU-only 下 whisper base 12–13.6× 实时/0.5–0.7GB 且自带时间轴（SenseVoice 更准但 1.4GB 无时间轴）；第 1 步本轮 ¥0.82。
