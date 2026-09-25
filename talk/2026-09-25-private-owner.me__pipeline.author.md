@@ -151,3 +151,12 @@
     4) **改法**（文件:行）+ 与邻居的关系：**R-38 已判"非缺陷"**（频道页那条是未滚到底），本例**只动单聊页**；`R-42` 刚把频道页卡片改成一步进单聊 —— 会不会把这个 sticky 结构复用过去（要一起看）；
     5) 代价与回归面：要重出的包 + 要复测的板块（照 SPEC §10 点名；判据建议＝**真机滚到底后点最后一条气泡能开信息窗**，并给"滚到底 + `scrollIntoView` + `elementFromPoint`"三个读数）。
     边界：不接主机、**未验 ≠ 通过**；证据进 `evidence/R39-定位-20260925/`；标题【hermes-pocket-R39-1 …】+ 4 行 + 成本¥。
+    ↳ 回复 [2026-09-25 10:13:08] pipeline.author: R-39 第 1 步已交报告 #1385（8 行）。**判定：真缺陷，但成因是 sticky 条压在滚动内容上、内层没为它留白**（不是"缺通用底部内边距"）。
+    谁是那个条：`#tk-sayline`（talk.js:1113-1125，`position:sticky`、`bottom:0`、**高 60px**、不透明背景），粘在 `.panel-body` 可视底边（实测 y=528..588）。**为什么盖得住**：DOM 顺序是先 `paintRole`（…→`#tk-chat`→chips→`#tk-sayline`）**再 `paintSends(el)`**（render talk.js:373-375）⇒ 粘性条下面还有内容，贴底时必然压住它上面那段（聊天框下沿）。
+    重叠量（实测三状态）：**未滚到底**（外层 scrollTop=0、内层已到底）末条气泡 366..577 vs 条上沿 528 ⇒ **重叠 49px**、下沿 `elementFromPoint` 命中 `INPUT.tk-askin#tk-sayin`（复现 tester）；**外层也滚到底**（可滚 101px）⇒ **重叠 0**、命中 `DIV.tk-bub`。
+    「滚到底也如此」的真相＝**两个滚动容器**：内层 `#tk-chat`（可滚 70892px，手指在气泡上滑滚的就是它）+ 外层 `.panel-body`（只有 101px，没人会去滚）⇒ 外层停在 0 时重叠一直在。这不是"非缺陷"，是"还有一段没人会滚的滚动量"。
+    判定与两案实测对照（都在"外层不滚"的真实状态下）：**乙**＝给内层 `#tk-chat` 补 `padding-bottom: calc(68px + var(--safe-b))` ⇒ 末条下沿 **577→509**、重叠 **0**、中心命中＝**气泡本身** ✔；**甲**＝给外层 `.panel-body` 补同样内边距 ⇒ 重叠 **93px（更糟）** ✘ ⇒ **走乙**。现状 `#tk-chat` padding-bottom=0、`.panel-body`=24px。
+    改法：**talk.js:1040-1048**（`#tk-chat` 内联样式）加一行 `paddingBottom`（或落 `talk.css` 的 `.tk-chat`）；建议顺手把条高做成 CSS 变量（`--sayline-h`，paintRole 里测一次写 `:root`），字号/安全区变了不会失配。
+    「两套 tk-sayin / 重复 id」核实：本机台 `#tk-sayin`=**1**、`.tk-askin`=1、`#tk-sayline`=1 ⇒ **没有重复 id**；页面上另有全局 `#composer`（发给 tmux、常驻 69px）——"像两套输入框"更可能是它。若真机确实看到重复 id，请 tester 补一条 `document.querySelectorAll("#tk-sayin").length` 读数。
+    与邻居：R-38（频道页未滚到底＝非缺陷）不冲突（本例滚到底仍复现、且是 sticky 覆盖）；**R-42 让人更多进单聊 ⇒ 更易撞上**，且 R-42 ③ 若落地（频道页自带输入条）必须同规则留白 ⇒ 建议把改法写成**共用规则**："粘性底部条 ⇒ 上方滚动内容留 `calc(条高 + var(--safe-b))` 底部内边距"；⑥讨论 B 案换条也要保留该规则。
+    回归面：改 talk.js（+可选 talk.css）⇒ 必须重出包（归 renderer）；复测主块 ①聊天页-单聊（判据＝**只滚内层到底后点最后一条气泡能开信息窗**；三读数 滚到底/scrollIntoView(block:nearest)/elementFromPoint 命中自己）+ 跨块 ⑧频道页。边界：不接主机、未验≠通过；证据 evidence/R39-定位-20260925/（sha256 f0aa6c534cb4…），登记表 R-39 已改，提交 fec9cfd。

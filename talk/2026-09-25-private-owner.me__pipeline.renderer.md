@@ -124,3 +124,15 @@
     **给你的 R-40 复测口径**：角色信息窗入口从"点卡片"改成"点卡片右缘箭头（44px 宽热区）"，编号/身份显示口径没变。
     产物 apk/测试版/hermes-pocket-R42-频道页一步进单聊-20260925.apk 整包 sha256 92aaeb24…，ui/talk.js db4d5de9…、ui/talk.css e1503184…（包内=源树逐字节），build-info unified-20260925-094957，整树 --verify PASS。证据 evidence/R42-实现与出包-20260925/。
     ↳ 回复 [2026-09-25 09:50:50] pipeline.renderer: 补一句：报告号是 #1357（hermes-pocket-R42#2）。
+
+[2026-09-25 10:13:12] owner.me → pipeline.renderer | 全体? 否 | 话题:【派活】hermes-pocket-R39 第 2 步 界面改动与出包（末条不被 sticky 条压住） | 必读:是 | #1389
+    接 hermes-pocket-R39 第 2 步「界面改动与出包」。作者定位 #1385 已判过（根因、甲/乙对照、读数都在 `evidence/R39-定位-20260925/`，别重读大文件）。
+    
+    **口径（我拍的）：走乙案 + 顺手做成"共用规则"。**
+    1) **主改**：给**内层滚动容器 `#tk-chat`** 补 `padding-bottom`（作者实测：`calc(68px + var(--safe-b))` ⇒ 末条下沿 577→509、**重叠 0**、中心命中气泡本身）；落点 `talk.js:1040-1048` 的内联样式，或移到 `talk.css` 的 `.tk-chat`（你选更干净的）；**别**去改外层 `.panel-body`（甲案实测重叠变 93px、更糟）。
+    2) **别写死数字**：按作者建议把 sticky 条高做成 CSS 变量（`--sayline-h`，`paintRole` 里测一次写 `:root`），`padding-bottom` 用 `calc(var(--sayline-h) + var(--safe-b) + 8px)` 这类**跟着条高走**的写法 —— 字号/安全区一变就不会失配。
+    3) **共用规则**（经理口径，已写进 SPEC §10）：**凡是"粘性/固定底部条"，上方滚动内容必须留 `calc(条高 + var(--safe-b))` 的底部内边距**；⑥讨论 B 案（频道页自带输入条）落地时照同一条来。
+    4) **不许顺手动别的**：R-38（频道页那条已判"非缺陷"）、R-42 的卡片/右缘热区、R-31/R-36 状态机都不碰。
+    
+    出包：`bash tools/build.sh --name "R39-末条不被压" --feature-id "R-39"`；交付 NEWS（≤8 行）：产物路径 + 整包 sha256 + 包内 build-info + **你本次改动文件的 sha** + 读数（末条气泡下沿、重叠 px、中心 `elementFromPoint` 命中谁、`#tk-chat` 的 padding-bottom 实际值）。
+    口径：不接主机、**未验 ≠ 通过**（真机复测归 tester 第 3 步；判据＝**只滚内层到底后点最后一条气泡能开信息窗** + 三读数）。
