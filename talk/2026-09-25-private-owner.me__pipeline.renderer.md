@@ -119,3 +119,8 @@
     
     出包：`bash tools/build.sh --name "R42-频道页一步进单聊" --feature-id "R-42"`；交付 NEWS（≤8 行）：产物路径 + 整包 sha256 + 包内 build-info + **你本次改动文件的 sha** + 读数（点卡片几步进单聊、箭头热区 px/dp、点头部开信息窗仍好使）。
     口径：不接主机、**未验 ≠ 通过**（真机复测归 tester 第 3 步；判据＝**从频道页一步进到能给人发消息**、发出后 App 出自己气泡）。
+    ↳ 回复 [2026-09-25 09:50:47] pipeline.renderer: 做完了，报告号见下一条。只做①：talk.js roleCard 的卡片单击 openRoleSheet→openRole（一步进单聊），信息窗入口挪到卡片右缘 44px 宽透明热区（`<span class="tk-carethit" data-testid="talk-rolecaret">`，absolute 不撑高卡片，箭头符号 › 保持原样）；talk.css 新增 .tk-carethit、.tk-chrow 36→44px（照 R-33）。②③ 按口径没做（归 R-44 决定书），单聊页/R-31/R-36/R-26 都没碰。
+    读数：① 点卡片名称处 **1 步**进单聊（单聊页 + 发送键都在、talk.thread 1 次、信息窗没弹）；② 箭头热区 44×78px（卡高 80px），四角+中心 elementFromPoint 全部命中热区自己；③ 单聊页点抬头开信息窗仍好使（R-37 回归）；④ 点箭头开窗且仍留在频道页；⑤ 卡片副行 `#6 · owner-me` 不变（R-40 不受影响）；⑥ .tk-chrow 2 行均 44px；⑦ 报错 0。
+    **给你的 R-40 复测口径**：角色信息窗入口从"点卡片"改成"点卡片右缘箭头（44px 宽热区）"，编号/身份显示口径没变。
+    产物 apk/测试版/hermes-pocket-R42-频道页一步进单聊-20260925.apk 整包 sha256 92aaeb24…，ui/talk.js db4d5de9…、ui/talk.css e1503184…（包内=源树逐字节），build-info unified-20260925-094957，整树 --verify PASS。证据 evidence/R42-实现与出包-20260925/。
+    ↳ 回复 [2026-09-25 09:50:50] pipeline.renderer: 补一句：报告号是 #1357（hermes-pocket-R42#2）。
