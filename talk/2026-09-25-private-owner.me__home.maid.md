@@ -124,3 +124,15 @@
     【切换】tester 接手：阶段放行：hermes-pocket-R43 第 3 步 复测（App 显示＝台账一行）
     pipeline.author → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
     进度：R43：2/3 · 当前 3 复测（App 显示＝台账一行）(tester)
+
+[2026-09-25 10:06:35] owner.me → home.maid | 全体? 否 | 话题:【预算哨兵】当日用量越线 | 必读:否 | #1379
+    【预算哨兵】今日 ¥12.66 ≥ 目标 ¥10.00 —— 只许收尾、不开新活（剩下的步骤挂 ended 或留到明天）。（本条由预算哨兵自动发出，每小时核一次）
+
+[2026-09-25 10:09:39] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1381
+    【完成】hermes-pocket-R43 第 3 步「复测（App 显示＝台账一行）」判定完成
+    进度：R43：3/3 · 已收尾
+
+[2026-09-25 10:10:01] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1383
+    【切换】author 接手：阶段放行：hermes-pocket-R39 第 1 步 定位与改法
+    pipeline.tester → pipeline.author，接下来由 author 干；项目只列刚动的这条。
+    进度：R39：0/3 · 当前 1 定位与改法(author)

@@ -140,3 +140,14 @@
     改法：**甲（推荐，我投甲）** `say()` 两分支带上 `ms/attempts/confirmed`、**`delivered` 判据改成 `confirmed==1`**（None⇒中性）、CLI 改打 JSON ⇒ **只动 talk.py 一个文件、约 10-15 行、不需要重出 APK**；判据＝App 显示必须与台账那行一致，复算 `sqlite3 /vol1/1000/airesults/roles-chat/talk.db "select msg_id,role,ok,ms,attempts,confirmed,note from delivery order by at desc limit 5"`。**乙**（App 认 confirmed）＝动 talk.js:1345 附近+Bridge.kt ⇒ 必须重出包并真机复装、且治不了根。甲只把"真确证"从中性态升级成「已送达+真 ms」，**R-36 的三态一个不删**。
     回归面：甲＝平台侧 talk.py（不需重出 APK，但要重启 relay 生效，归你）；乙＝renderer 出包。复测板块 主块 ①单聊（发一条→状态行＝真回执）+ ②群聊（广播分支同样要带真回执）+ 台账复算一条。
     两点如实交代：① 我原本想"复制一份库跑真 CLI 看输出"——**被安全策略拦下**（命令含删表操作），那条路我放弃了；平台侧结论改由**源码逐行**给出（CLI 输出形态在 talk.py:2459-2466 一目了然）；② 我**没有**在正式库跑任何写操作（会给真人投消息）。证据 evidence/R43-定位-20260925/（sha256 cf0b97392a33…），登记表 R-43 已改，提交 715eeab。
+
+[2026-09-25 10:10:01] owner.me → pipeline.author | 全体? 否 | 话题:【派活】hermes-pocket-R39 第 1 步 定位（单聊末条气泡被 sticky 输入条压住） | 必读:是 | #1384
+    接 hermes-pocket-R39 第 1 步「定位与改法」（只定位、只出改法，不写代码）。来源＝测试者 R32-3/R37-3 真机读数（登记表 R-39）：**单聊页列表最后一条气泡被 sticky 输入条 `#tk-sayline`（y510..570）压住、重叠 56px**，点其中点命中 `INPUT.tk-askin` ⇒ **末条气泡点不开信息窗**，**滚到底也如此**（与 R-38 那类"未滚到底"的误报不同，这条滚到底仍复现）。
+    
+    **要量清（文件:行 + 读数）**：
+    1) **谁是那个 sticky 条**：`#tk-sayline` 的定位方式（`position:sticky/absolute/fixed`）、它为什么能在滚动区里盖住内容、它的高度与 `bottom`；同页**两套 `tk-sayin` 输入框 / 重复 id** 这件事一并说清（测试者 R32-3 报过）；
+    2) **重叠量**：滚到底时「列表最后一条气泡的下沿」与「`#tk-sayline` 上沿」的差（px/dp），以及 `.panel-body` / 聊天列表容器的 `padding-bottom` 现状；
+    3) **判定**：是**缺底部内边距**（给列表补出 sticky 条的高度）还是 **sticky 条该让位**（例如改成页面级底部条、不覆盖滚动内容）；
+    4) **改法**（文件:行）+ 与邻居的关系：**R-38 已判"非缺陷"**（频道页那条是未滚到底），本例**只动单聊页**；`R-42` 刚把频道页卡片改成一步进单聊 —— 会不会把这个 sticky 结构复用过去（要一起看）；
+    5) 代价与回归面：要重出的包 + 要复测的板块（照 SPEC §10 点名；判据建议＝**真机滚到底后点最后一条气泡能开信息窗**，并给"滚到底 + `scrollIntoView` + `elementFromPoint`"三个读数）。
+    边界：不接主机、**未验 ≠ 通过**；证据进 `evidence/R39-定位-20260925/`；标题【hermes-pocket-R39-1 …】+ 4 行 + 成本¥。
