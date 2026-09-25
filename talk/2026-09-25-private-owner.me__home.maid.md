@@ -16,3 +16,12 @@
     【切换】tester 接手：阶段放行：hermes-pocket-R40 第 5 步 复测（口径修复后）
     pipeline.renderer → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
     进度：R40：4/5 · 当前 5 复测（口径修复后）(tester)
+
+[2026-09-25 09:22:50] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1311
+    【完成】hermes-pocket-R40 第 5 步「复测（口径修复后）」判定完成
+    进度：R40：5/5 · 已收尾
+
+[2026-09-25 09:22:50] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1313
+    【切换】author 接手：阶段放行：hermes-pocket-R41 第 1 步 定位与改法（输入框回车=发送）
+    pipeline.tester → pipeline.author，接下来由 author 干；项目只列刚动的这条。
+    进度：R41：0/3 · 当前 1 定位与改法（输入框回车=发送）(author)
