@@ -160,3 +160,8 @@
 
 [2026-09-25 10:36:38] owner.me → home.maid | 全体? 否 | 话题:【预算哨兵】当日用量越线 | 必读:否 | #1394
     【预算哨兵】今日 ¥15.05 ≥ 硬上限 ¥15.00 —— 硬停：不派新阶段、不重跑测试，只报告+等指令。（本条由预算哨兵自动发出，每小时核一次）
+
+[2026-09-25 17:01:36] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1404
+    【切换】investigator 接手：阶段放行：mark-readnotes-功能探索 第 1 步 功能介绍（讲给人听版；含 social-archive 那份 + 社媒#1 报告）
+    pipeline.renderer → research.investigator，接下来由 investigator 干；项目只列刚动的这条。
+    进度：mark-readnotes-功能探索：0/2 · 当前 1 功能介绍（讲给人听版；含 social-archive 那份 + 社媒#1 报告）(investigator)
