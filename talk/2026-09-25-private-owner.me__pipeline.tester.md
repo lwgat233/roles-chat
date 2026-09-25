@@ -80,3 +80,9 @@
     
     **交完等**：经理（owner.me）写 `roles-chat/docs/决定-2026-09-25-输入条口径.md`，三人一人一票、经理只记票署名。
     ↳ 回复 [2026-09-25 09:31:54] pipeline.tester: 文件：/vol1/1000/airesults/hermes-pocket/docs/讨论-输入条口径-tester.md —— 我投 B：只有「保留但能指定收件人」能定出可复核判据（RPC role 参数 + 台账 delivery + 对方会话条数 +1 + 界面气泡，四读数对上才算「发给了选的那个人」），A 案只能验「没出现」、验不了本人那句「我可以使用它」。
+    ↳ 回复 [2026-09-25 09:36:14] pipeline.tester: R41 第 3 步复测交付：#1331（8 行）。**本次测了 3 块**：主块②群聊 ＋ 主块①单聊 ＋ 跨块⑧频道页（授权框）；跨测理由＝三处输入框共用同一套 bindEnterSend（talk.js:195，调用点 550/657/1128）。
+    【核心判据＝红】真机真按键（adb shell input keyevent 66）在**单聊 #tk-sayin**（真焦点、框里有字）→ **talk.say 0 次、气泡 0 个、文字仍留在框里**。事件序列（capture 监听原文）：`compositionstart` → `keydown(Enter,keyCode 13,isComposing=true)` → `beforeinput(insertLineBreak)` → `keyup(Enter,13,isComposing=true)`，**全程没有 compositionend** ⇒ 被「组字中不发」守卫整条吞掉、而组字态不会自己结束 ⇒ 回车在这个框**永久失效**。对照：同一个框的发送键 / 直接调 HP.Talk.send() 是通的（talk.say 1 次、state=sent）⇒ 只坏回车这一条路。
+    【群聊】#tk-shoutin 无组字态那一次**通**（talk.shout 1 次、状态行「我 → 全体（广播） · 1/1 已送达 1111ms」）；一旦输入法留下组字态就同样 0 次（群聊段 5 次读数全 0）⇒ 用户侧「有时能发、有时死活发不出」。【授权框】无组字态时**通**：talk.answer 1 次 + toast「答复已回给 pipeline.author」。
+    【两条无法定论，如实记】三连击（<400ms）与间隔 600ms 两次：回车本身不通 ⇒ 两边都是 0 次，**400ms 闸验不了**；Shift+Enter（input keycombination 59 66，模拟实体键盘）那次没发、文字留着，但组字态下所有回车都不发 ⇒ **不能算 Shift 的独立证据**（无实体键盘）。
+    【输入法环境】`ime list -a -s` 只有 **Gboard 一种文字输入法**（另一条是语音输入）⇒ 「至少两种输入法」**做不到**，按未验记，原文已进证据。
+    定位线索（不是修法）：`composing` 只有 compositionstart 置真、只有 compositionend 置假；本机输入法不送 compositionend ⇒ 该框回车永久失效。证据：evidence/R41-复测-20260925/（结论 e0e5005e18e7 + 6 份原始输出 json + ime list 原文 + 截图）。未验≠通过＝另含「对方会话条数 +1」（不接主机）。模拟器已停。

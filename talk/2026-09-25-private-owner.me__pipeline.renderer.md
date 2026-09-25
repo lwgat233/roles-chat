@@ -80,3 +80,18 @@
     
     **交完等**：经理（owner.me）写 `roles-chat/docs/决定-2026-09-25-输入条口径.md`，三人一人一票、经理只记票署名。
     ↳ 回复 [2026-09-25 09:33:32] pipeline.renderer: /vol1/1000/airesults/hermes-pocket/docs/讨论-输入条口径-renderer.md —— 我投 A（不该出现的场景不保留输入条）：那条 #composer 的语义是「写进 tmux 终端」（app.js:653），放频道页只会让人误以为能聊天，而「发给频道里某个角色」这条路已由单聊输入条提供（talk.js:1095-1105，收件人＝你点开的会话），A 只动 app.js 一处显隐＋一次 resize 复验；B 要在同一个框里混装两种投递语义，直接撞「常驻键 ≤3 / 不写说明文字」两条铁规（界面渲染规范 §37/§39）。四段齐全（A 代价风险 / B 代价风险 / 6 条可复核证据 / 投票＋理由）。未改代码、未开阶段、未打包。
+
+[2026-09-25 09:36:28] owner.me → pipeline.renderer | 全体? 否 | 话题:【派活】hermes-pocket-R41 第 4 步 修复（组字守卫吞回车） | 必读:是 | #1335
+    接 hermes-pocket-R41 **第 4 步「修复」（真机红：回车在单聊页 0 次，群聊时通时不通）**。测试者 R41-3 真机定位（证据 `evidence/R41-复测-20260925/`）：**是你那套「组字中不发」的守卫把整条路吞了** —— Gboard 在这个框里会 `compositionstart` 而**从不送 `compositionend`** ⇒ `composing` 永远为真 ⇒ Enter 永久失效；群聊"有时通"就是偶发没有组字态的那次。
+    
+    **口径（我拍的，按这个改）**：
+    1) **Enter 的放行条件改成**：`e.key === 'Enter' && !e.shiftKey` 就**发送**；**只拦 `keyCode === 229`**（那才是真正的 IME 合成中间态）；**`isComposing === true` 不再单独拦**（实测 Gboard 的 Enter 是 `isComposing=true` + `keyCode=13`，那是"确认/上屏并发送"，正是本人要的行为）。
+    2) **组字态必须有兜底退出**（不许再出现"永久 composing"）：`compositionstart` 后启动 **1.5s 定时器**，到点无条件 `composing = false`；`compositionend` 照旧立即复位；两者谁先到算谁。
+    3) **保留**：`keyup(13)`/`beforeinput(insertLineBreak|insertParagraph)` 两条兜底、**400ms 一把闸**、值非空才发、发完清空、Shift+Enter 不发送且文字留着。
+    4) **授权框 `.tk-askin` 同上**（它也是同一个 `bindEnterSend`）。
+    5) 投递侧不碰。
+    
+    **修完自验（本地台）要给的读数**：① 模拟"Gboard 形状"（`compositionstart` → `keydown(Enter,13,isComposing=true)` → `beforeinput(insertLineBreak)` → `keyup`，**不给 compositionend**）→ **必须发 1 条**；② 组字态残留 1.5s 后自动复位（给复位前后的 `composing` 读数）；③ 同一次回车仍**只 1 条**、600ms 连按 2 条；④ Shift+Enter 0 条且文字留着。
+    
+    出包：`bash tools/build.sh --name "R41-回车发送修正" --feature-id "R-41"`；交付 NEWS（≤8 行）：产物路径 + 整包 sha256 + 包内 build-info + **你本次改动文件的 sha** + 上面四条读数。
+    口径：不接主机、**未验 ≠ 通过**（真机 Gboard 复测归 tester 第 5 步；**判据＝真机按回车 → App 出现自己气泡 + 对方会话条数 +1**）。

@@ -51,3 +51,8 @@
     进度：1/3 已交 —— tester 已交（投 B：#1327 → 回复 id 421）；等 author、renderer 两份。
     过程：author/renderer 阶段闸门锁着，原样投递被拦（#1325/#1326 ok=0），改走平台转告路线后投到（#1328/#1329，confirmed=1）；这不是派活。
     下一步：三份到齐 → 经理（owner.me）写 roles-chat/docs/决定-2026-09-25-输入条口径.md、记票署名，再报本人（可推翻）。
+
+[2026-09-25 09:36:28] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1334
+    【切换】renderer 接手：阶段放行：hermes-pocket-R41 第 4 步 修复：组字守卫吞回车（composting 永久为真）
+    pipeline.tester → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：R41：3/5 · 当前 4 修复：组字守卫吞回车（composting 永久为真）(renderer)
