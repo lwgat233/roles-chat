@@ -12,3 +12,11 @@
     6) 常驻按键/遮挡照旧量；`#id` 与信息窗一致性要给 DOM 原文。
     
     口径：**不接主机、未验 ≠ 通过**；报告标题【hermes-pocket-R40-3 …】+ 4 行 + 成本¥，第一条写「本次测了哪几块 + 为什么跨」；证据进 `evidence/R40-复测-20260925/`。
+    ↳ 回复 [2026-09-25 09:16:09] pipeline.tester: R40 第 3 步复测交付：#1300（8 行）。**本次测了 3 块**：主块⑤会话页 ＋ 主块⑧频道页 ＋ 跨块①聊天页-单聊（信息窗同源）；跨测理由＝编号映射只一处（talk.js:147-175 sessList/winName/sessInfo/sessLabel），卡片/信息窗/会话页三处共用。数据全用作者存的平台真回包（evidence/R40-定位-20260924/fixtures/），判定走产品代码。
+    ① ⑤会话页：真机渲染 **8 行、每行 `#<id> <身份>`**；分组三个都真出现 = 在跑（5）／没在跑（1）／临时对话（2）✓；点行弹窗标题「#5 测试者（角色会话） · roles:pipeline-tester」⇒ 一眼看出是谁 ✓。
+    ② 容器不成行 + 同 tmux 去重：另造 `#99 tmux=roles` 容器假行与 `#12 tmux=roles:pipeline-tester`（与 #5 同 tmux）→ 渲染后**行数仍 8**，两者都没成行 ✓。
+    ③ 同号同人：卡片副行 / 信息窗「会话」行 = `#5 · pipeline-tester`、`#10 · pipeline-author`、`#4 · 本人-女仆通道`，与会话页同一 #id 一一对应 ✓；没会话的角色（另造 pipeline.auditor）显「pipeline.auditor · 未起会话」**不显号** ✓（前端不造号）。
+    ④ 弹窗动作（真触摸）：点「切」→ 发 `/resume pipeline.tester\r`（角色名）；点「删」→ confirm「删掉「pipeline.tester」这个会话？」后调 `talk.sessionDel{name:'pipeline.tester'}`（**按人**、非按容器 roles）；动作前后各抄一次真 `tmux list-windows -t roles`（0 bash/1 research-investigator/2 owner-me/3 pipeline-author/4 pipeline-renderer/5 pipeline-tester）**逐字节一致** ⇒ 机器上没有任何窗口被影响。**真杀那一步＝未验**：不接主机走不通，且真杀会打断正在干活的人，我把 talk.sessionDel 拦在 rpc 层只记参数。
+    ⑤ **未达你写的口径一条**：女仆那条会话页显示 `#4 可爱女仆（已废）`，不是「#4 女仆（本人通道）」—— 身份取平台 title 去括号（可爱女仆），「（已废）」来自平台回包 alive=false；卡片/信息窗那行是 `#4 · 本人-女仆通道`（只有窗口名位置，没有「女仆」字样）。改口径还是改文案（给通道角色一个专门身份标签）请你定。
+    ⑥ 另一条读数：**先开会话页、roles 还没到位**时身份退化成平台 name（`#5 pipeline.tester`），roles 到位后才是「#5 测试者」——两种顺序我都量了，要不要强制先拉 roles 由你定。
+    ⑦ 常驻键 keybar16/composer2；0 未捕获异常。未验≠通过＝不接主机那几条（真杀落地、实时刷新、切后远端效果）。证据：evidence/R40-复测-20260925/（结论 8bcf5baacd06 + 2 份原始输出 json）。模拟器已停。
