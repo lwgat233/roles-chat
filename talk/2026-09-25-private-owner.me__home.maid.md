@@ -25,3 +25,12 @@
     【切换】author 接手：阶段放行：hermes-pocket-R41 第 1 步 定位与改法（输入框回车=发送）
     pipeline.tester → pipeline.author，接下来由 author 干；项目只列刚动的这条。
     进度：R41：0/3 · 当前 1 定位与改法（输入框回车=发送）(author)
+
+[2026-09-25 09:26:07] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1316
+    【完成】hermes-pocket-R41 第 1 步「定位与改法（输入框回车=发送）」判定完成
+    进度：R41：1/3 · 等 2 界面改动与出包(renderer)
+
+[2026-09-25 09:26:07] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1318
+    【切换】renderer 接手：阶段放行：hermes-pocket-R41 第 2 步 界面改动与出包
+    pipeline.author → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：R41：1/3 · 当前 2 界面改动与出包(renderer)
