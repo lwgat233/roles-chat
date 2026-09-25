@@ -56,3 +56,12 @@
     【切换】renderer 接手：阶段放行：hermes-pocket-R41 第 4 步 修复：组字守卫吞回车（composting 永久为真）
     pipeline.tester → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
     进度：R41：3/5 · 当前 4 修复：组字守卫吞回车（composting 永久为真）(renderer)
+
+[2026-09-25 09:38:48] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1337
+    【完成】hermes-pocket-R41 第 4 步「修复：组字守卫吞回车（composting 永久为真）」判定完成
+    进度：R41：4/5 · 等 5 复测（真机 Gboard 回车）(tester)
+
+[2026-09-25 09:39:15] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1339
+    【切换】tester 接手：阶段放行：hermes-pocket-R41 第 5 步 复测（真机 Gboard 回车）
+    pipeline.renderer → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
+    进度：R41：4/5 · 当前 5 复测（真机 Gboard 回车）(tester)
