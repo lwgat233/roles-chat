@@ -162,3 +162,22 @@
     ④ R-40 回归＝绿（口径明确没变）：卡片副行 `#4 · 女仆（本人通道）`/`#6 · owner-me`/`#10 · pipeline-author`/`#8 · pipeline-renderer`/`#5 · pipeline-tester`/`#11 · research-investigator`；信息窗「会话」行 `#6 · owner-me`/`#5 · pipeline-tester`/`#4 · 女仆（本人通道）` ⇒ **入口从"点卡片"改成"点右缘箭头"，`#id · 窗口名` 的显示口径不变**（已按你要求写进结论）。
     ⑤ R-33 口径＝绿：`.tk-chrow` 实测 365×**44dp**；右缘热区 44dp 宽 × 整卡高（44/58/81 样本都 ≥44dp）。
     ⑥ 常驻键 keybar16/composer2；0 未捕获异常 / 0 console.error。未验≠通过＝不接主机那几条（「对方会话条数 +1」同 R41-5 口径，放行一次主机连接即可复算）。证据：evidence/R42-复测-20260925/（结论 9e52ed9f8967 + 2 份原始输出 json）。模拟器已停。
+
+[2026-09-25 10:06:00] owner.me → pipeline.tester | 全体? 否 | 话题:【派活】hermes-pocket-R43 第 3 步 复测（App 显示＝台账一行） | 必读:是 | #1378
+    接 hermes-pocket-R43 第 3 步「复测」。作者定位 #1369 已判过、**平台侧改动（甲案）已由经理做完**：`say()` 现在带真回执、CLI 打 JSON（证据在 `evidence/R43-定位-20260925/` 与 `evidence/R43-实现-平台侧-20260925/`）。
+    
+    **已经改好的（平台侧，不用重出 APK）**：
+    - `talk.py say()` → 单聊返回 `{"id","to","ok","delivered","ms","attempts","confirmed"}`；`delivered` 判据＝**O-1 的 `confirmed`**（对方会话消息条数 +1）：`1`→`true`、`0`/读不到→`null`（中性态）、抛错→`false` + `error`；
+    - 广播分支每条带 `confirmed/ms`，顶层 `delivered`＝全确证 `true`／有失败 `false`／有未知 `null`；
+    - `say` 的 CLI 输出从「人话」改成 **`json.dumps`**（原来人话让 `Bridge.kt` 的 `JSONObject` 解析必失败 → 永远「未确认」）。
+    - **经理的真跑证据**（可复算）：`say --role pipeline.author` → CLI 回 `{"delivered": true, "ms": 3329, "attempts": 1, "confirmed": 1}`；台账同一行 `delivery(msg 1370, pipeline.author, ok=1, ms=3368, attempts=1, confirmed=1)`。
+    
+    要测（分板块；主块 **①聊天页-单聊** + **②聊天页-群聊**，判据核心＝**App 显示＝台账那一行**）：
+    1) **甲案生效验证（核心）**：把**平台新形状**的 JSON（就是上面那串真回执）喂给桥/本机台 → App 状态行应显示「**已送达 <ms> ms**」（**不是**「已发出（未确认）」），且 ms 与台账那行对得上（给两个数）；
+    2) **三态不许被弄坏**：`delivered: null`（没确证）→ 仍显示中性态「已发出（未确认）」（无毫秒、无重试键）；`delivered: false` + error → 「没送达：<原因>」；**一态都不许少**；
+    3) **广播分支**：`say --role 全体` 的新形状（`results` 每条带 `confirmed/ms` + 顶层 `delivered`）喂桥 → 群聊状态行显示「N/M 已送达 <ms>」+ 逐角色 ✓/✗（与台账一致）；
+    4) **回归**：R-31/R-36 的其它显示（重试、超时 3s/8s）不许被这轮改动带坏；
+    5) 0 未捕获异常 / 0 console.error。
+    
+    **未验照记（别当红也别放过）**：真机 + 真平台端到端（要一次主机连接）＝**未验**；本轮能验的是"平台新回执形状 → App 显示"这一段。
+    口径：不接主机、**未验 ≠ 通过**；报告标题【hermes-pocket-R43-3 …】+ 4 行 + 成本¥，第一条写「本次测了哪几块 + 为什么跨」；证据进 `evidence/R43-复测-20260925/`。

@@ -881,23 +881,41 @@ class Talk:
                     label, body, mid, who)
                 try:
                     self.deliver(who, text)
-                    self.conn.execute("INSERT OR REPLACE INTO seen(msg_id,role,seen_at) VALUES(?,?,?)",
-                                      (mid, who, now_ts())) if False else None
-                    out.append({"role": who, "delivered": True})
+                    c = self.last_deliver_confirmed
+                    out.append({"role": who, "delivered": True if c == 1 else (None if c == 0 else None),
+                                "confirmed": c, "ms": self.last_deliver_ms,
+                                "attempts": self.last_deliver_attempts})
                 except Exception as e:
-                    out.append({"role": who, "delivered": False, "error": str(e)})
+                    out.append({"role": who, "delivered": False, "confirmed": None,
+                                "error": str(e), "ms": self.last_deliver_ms})
             self.conn.commit()
-            return {"id": mid, "broadcast": True, "count": len(out), "results": out}
+            if any(x.get("delivered") is False for x in out):
+                top = False
+            elif all(x.get("delivered") is True for x in out) and out:
+                top = True
+            else:
+                top = None        # 有"没确证"的 → 中性（不装作送达）
+            return {"id": mid, "broadcast": True, "count": len(out), "delivered": top, "results": out}
 
         mid = self.send(frm, role, kind, topic, body)
         label = self._label_tag(kind, frm, mid)
         text = "%s\n%s\n\n（回我用：python3 tools/talk.py reply --id %d --from %s --body \"你的话\"）" % (
             label, body, mid, role)
+        # R-43 甲案：**给 App 机器可读的真回执**（不再拿"命令没抛错"当投成）——
+        # delivered 判据＝O-1 的 confirmed（对方会话消息条数 +1）：1→True、0 或读不到→None（中性态）、抛错→False。
+        err, ok = "", True
         try:
             self.deliver(role, text)
-            return {"id": mid, "delivered": True, "to": role}
         except Exception as e:
-            return {"id": mid, "delivered": False, "error": str(e), "to": role}
+            ok, err = False, str(e)
+        conf = self.last_deliver_confirmed
+        delivered = False if not ok else (True if conf == 1 else (None if conf == 0 else None))
+        out = {"id": mid, "to": role, "ok": ok, "delivered": delivered,
+               "ms": self.last_deliver_ms, "attempts": self.last_deliver_attempts,
+               "confirmed": conf}
+        if err:
+            out["error"] = err
+        return out
 
     def switch_role(self, role):
         """切到某个角色 = **恢复他的 Hermes 会话**（默认 hermes --resume 名字/标题），
@@ -2459,12 +2477,8 @@ def main():
     elif a.cmd == "say":
         r = t.say(a.role, a.body or a.text or "", a.topic or "私信", a.kind or "private",
                   frm=(a.by or "me"))   # 署名：本人(me) 或 经理(owner.me)
-        if r.get("broadcast"):
-            print("#%d 广播：逐个投递 %d 人 → %s" % (r["id"], r["count"],
-                  ", ".join((x["role"] + ("✓" if x["delivered"] else "✗")) for x in r["results"])))
-        else:
-            print("#%d 已记入并投给 %s（投递%s）" % (r["id"], r.get("to", a.role),
-                  "成功" if r.get("delivered") else "失败：" + str(r.get("error"))))
+        # R-43 甲案：say 一律打 JSON（App/Bridge 要机器可读的真回执；人话会让 JSONObject 解析失败 → 永远"未确认"）
+        print(json.dumps(r, ensure_ascii=False))
     elif a.cmd == "deliver":
         body = a.text or sys.stdin.read()
         if a.id:

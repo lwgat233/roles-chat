@@ -133,3 +133,10 @@
     4) **顺带**：`?` 不许留在结论里 —— 「已送达 Nms」要能被真实数据复算出（给出复算命令）；
     5) 代价与回归面：要重出的包（甲可能要重装 APK？说明）+ 要复测的板块（照 SPEC §10 点名；判据建议＝**App 发一条消息，状态行显示的是"平台真回执"**（真投成→已送达+ms；没投成→没送达+原因；不确定→中性态），并且**能拿台账复算**）。
     边界：不接主机、**未验 ≠ 通过**；证据进 `evidence/R43-定位-20260925/`；标题【hermes-pocket-R43-1 …】+ 4 行 + 成本¥。
+    ↳ 回复 [2026-09-25 10:04:24] pipeline.author: R-43 第 1 步已交报告 #1369（8 行）。**单边结论：根因在平台侧，不是 App 没解析好。**
+    决定性读数（四种真实回执形状喂桥，走真 HP.Talk.send 读真状态行）：A 现状真形状 → **「已发出（未确认）」**（复现本人看到的）；**B 只要平台给 `{delivered:true, ms:1491}` → App 立刻显示「已送达 1491ms」，App 一行都不用改**；C `delivered:false` → 「没送达：没有会话」；D 只给 `confirmed`（乙案）→ 仍是「未确认」⇒ 乙案必须改 App 才生效。
+    链路（文件:行）：talk.js send()(1279) → Bridge.kt:772 talk.say → `talkJson()` 的 `JSONObject(out)` **解析失败就走兜底** `{raw: 人话, cmd:…}`（Bridge.kt:120-126）⇒ `raw.has("delivered")=false` ⇒ `delivered=null`（Bridge.kt:790-794）⇒ App 中性态（talk.js:1327-1328、1345-1347）。**平台侧为什么必失败**：`talk.py say` 的 CLI 打的是人话 `print("#%d 已记入并投给 %s（投递%s）")`（talk.py:2459-2466），而同仓给 App 用的子命令全打 `json.dumps`（2258/2282/2286…）；而且**即便解成 JSON**，那个 `delivered` 也只是 `try: deliver(); return {"delivered": True}`（talk.py:896-900）＝R-36 判死的假成功。
+    真回执平台其实**已经有**（O-1）：`last_deliver_ms/attempts/confirmed`（talk.py:1091/1105/1074-1102）+ `delivery` 表两列（182-183/717-720）—— **只是 `say()` 从来没把它带出去**。
+    改法：**甲（推荐，我投甲）** `say()` 两分支带上 `ms/attempts/confirmed`、**`delivered` 判据改成 `confirmed==1`**（None⇒中性）、CLI 改打 JSON ⇒ **只动 talk.py 一个文件、约 10-15 行、不需要重出 APK**；判据＝App 显示必须与台账那行一致，复算 `sqlite3 /vol1/1000/airesults/roles-chat/talk.db "select msg_id,role,ok,ms,attempts,confirmed,note from delivery order by at desc limit 5"`。**乙**（App 认 confirmed）＝动 talk.js:1345 附近+Bridge.kt ⇒ 必须重出包并真机复装、且治不了根。甲只把"真确证"从中性态升级成「已送达+真 ms」，**R-36 的三态一个不删**。
+    回归面：甲＝平台侧 talk.py（不需重出 APK，但要重启 relay 生效，归你）；乙＝renderer 出包。复测板块 主块 ①单聊（发一条→状态行＝真回执）+ ②群聊（广播分支同样要带真回执）+ 台账复算一条。
+    两点如实交代：① 我原本想"复制一份库跑真 CLI 看输出"——**被安全策略拦下**（命令含删表操作），那条路我放弃了；平台侧结论改由**源码逐行**给出（CLI 输出形态在 talk.py:2459-2466 一目了然）；② 我**没有**在正式库跑任何写操作（会给真人投消息）。证据 evidence/R43-定位-20260925/（sha256 cf0b97392a33…），登记表 R-43 已改，提交 715eeab。

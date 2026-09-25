@@ -115,3 +115,12 @@
     【切换】author 接手：阶段放行：hermes-pocket-R43 第 1 步 定位与改法
     pipeline.tester → pipeline.author，接下来由 author 干；项目只列刚动的这条。
     进度：R43：0/3 · 当前 1 定位与改法(author)
+
+[2026-09-25 10:06:00] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1375
+    【完成】hermes-pocket-R43 第 1 步「定位与改法」判定完成
+    进度：R43：2/3 · 等 3 复测（App 显示＝台账一行）(tester)
+
+[2026-09-25 10:06:00] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1377
+    【切换】tester 接手：阶段放行：hermes-pocket-R43 第 3 步 复测（App 显示＝台账一行）
+    pipeline.author → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
+    进度：R43：2/3 · 当前 3 复测（App 显示＝台账一行）(tester)

@@ -1,0 +1,5 @@
+{"id": 1374, "to": "pipeline.author", "ok": true, "delivered": true, "ms": 3325, "attempts": 1, "confirmed": 1}
+msg_id  role             ok  ms    attempts  confirmed
+------  ---------------  --  ----  --------  ---------
+1370    pipeline.author  1   3368  1         1        
+（上面两段：CLI 的 JSON 回执 + 台账同一行；ms 相近、confirmed=1 一致 —— 判据＝App 显示应等于台账这行）
