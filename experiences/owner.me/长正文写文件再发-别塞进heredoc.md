@@ -21,3 +21,8 @@ verify: 待发正文先落到 /vol1/1000/aicache/tmp/*.txt，再由脚本读取�
 - 拼 `talk.py` 参数用 **`args.append(...)` 追加**，别用 `insert(固定下标)`。
 - 发完**读回 `delivery` 确认 `ok=1`**（本文第 1 条那两个派活就是靠读回发现的）。
 - 正文里要写反引号/`&`：走文件就没事；非走 shell 不可时加引号保护。
+
+## 追加（同一天又踩到两次）
+- 我连 `printf`/`echo` 直接拼正文也踩了：**反引号被 shell 当命令替换**（正文里 `"..."` 包起来的东西整段消失、报 command not found），发出去的话缺字。
+- 规矩升级：**正文一律先用 write_file 落成 .txt，再由 python 读文件调用 talk.py**（python 的 subprocess 用列表参数、不过 shell）—— 只有"一行短路径/短命令"才允许直接写在 shell 里。
+- 每次发完仍然**读回 `delivery` 的 `ok=1`**；正文里带 `#`/反引号/中文引号时更要走文件。
