@@ -109,3 +109,17 @@
     【红：Shift+Enter 会误发】`input keycombination 59 66`（模拟实体键盘）后**消息真发出去了**：序列 `keydown Shift(shiftKey=false)` → `keydown Enter(shiftKey=true，主路拦住了)` → `keyup Shift(shiftKey=true ⇒ shiftDown=true)` → `keyup Enter(shiftKey=false ⇒ shiftDown 被这次 keyup 覆盖成 false)` ⇒ keyup 那条兜底发送。实测 talk.say 1 次、body `R41-shift-seq`、输入框清空。根因线索：keyup 里的 `shiftDown = e.shiftKey` 覆盖了 keydown 的判定（Shift 先松、Enter 后松是常见顺序）。之后普通回车仍能发（不粘滞 ✓）。修法请 author 定（我没有改代码的授权）。
     【「对方会话条数 +1」＝未验（不接主机）】App 的 rpc 走到原生传输层就出不了本机，我数不到 ~/.hermes/state.db 那条 +1；替它数＝我自己造一条、会污染别人的会话，且不算"App 发出去的"，所以不做。已把复核口径存进证据：台账最近真投递 `delivery(msg_id=1328, role=pipeline.author, ok=1, ms=6029)`；pipeline.author 会话 `session_id=20260922_210353_677b99`、当前 `messages=1138` ⇒ **放行一次主机连接即可复算 +1**（要的话给我一次机会，我 30 秒内出数）。
     0 未捕获异常 / 0 console.error；常驻键 keybar16/composer2。未验另含：真机多输入法（只有 Gboard）、Shift 结论是模拟实体键盘、keyCode===229 那条分支没造出对应事件。证据：evidence/R41-复测2-20260925/（结论 6610bdea2291 + 4 份原始输出 json + 条数口径参照）。模拟器已停。
+
+[2026-09-25 09:48:16] owner.me → pipeline.tester | 全体? 否 | 话题:【⑥讨论·结论】输入条口径 → B 案（保留但必须真能用） | 必读:否 | #1352
+    【⑥讨论·结论已出】输入条口径 → 决定书 `roles-chat/docs/决定-2026-09-25-输入条口径.md`
+    票数：B 两票（author、tester）／ A 一票（renderer）⇒ 结论走 B：保留该输入条，但必须先做成「收件人显式」的真输入条（可见收件人状态 + 走 talk.say + 与实时模式互斥），否则不予保留。
+    生效范围：频道页本片输入区 + 其它「非 tmux 会话页」场景同口径；不影响 R-41（回车已修）与 R-40（编号身份）。
+    执行约束（renderer 的反对意见已记进决定书，落实现必须守）：不许破坏「常驻键 ≤3」「不写说明文字」；不许新增第二条同义输入通道；实现前先给判据。
+    排期：R-42 的 ①（卡片一步进单聊）先做（已派），B 案的「频道页自带输入条」排在它之后。这一轮不用回、不用动。
+
+[2026-09-25 09:48:48] owner.me → pipeline.tester | 全体? 否 | 话题:【告知·⑥讨论结论】输入条口径 → B 案（保留但必须真能用） | 必读:否 | #1356
+    【⑥讨论·结论已出】输入条口径 → 决定书 `roles-chat/docs/决定-2026-09-25-输入条口径.md`
+    票数：B 两票（author、tester）／ A 一票（renderer）⇒ 结论走 B：保留该输入条，但必须先做成「收件人显式」的真输入条（可见收件人状态 + 走 talk.say + 与实时模式互斥），否则不予保留。
+    生效范围：频道页本片输入区 + 其它「非 tmux 会话页」场景同口径；不影响 R-41（回车已修）与 R-40（编号身份）。
+    执行约束（renderer 的反对意见已记进决定书，落实现必须守）：不许破坏「常驻键 ≤3」「不写说明文字」；不许新增第二条同义输入通道；实现前先给判据。
+    排期：R-42 的 ①（卡片一步进单聊）先做（已派），B 案的「频道页自带输入条」排在它之后。这一轮不用回、不用动。
