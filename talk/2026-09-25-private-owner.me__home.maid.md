@@ -7,3 +7,12 @@
     【切换】renderer 接手：阶段放行：hermes-pocket-R40 第 4 步 修复口径：女仆标签/通道不算已废/退化态带号
     pipeline.tester → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
     进度：R40：3/5 · 当前 4 修复口径：女仆标签/通道不算已废/退化态带号(renderer)
+
+[2026-09-25 09:18:54] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1306
+    【完成】hermes-pocket-R40 第 4 步「修复口径：女仆标签/通道不算已废/退化态带号」判定完成
+    进度：R40：4/5 · 等 5 复测（口径修复后）(tester)
+
+[2026-09-25 09:18:54] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1308
+    【切换】tester 接手：阶段放行：hermes-pocket-R40 第 5 步 复测（口径修复后）
+    pipeline.renderer → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
+    进度：R40：4/5 · 当前 5 复测（口径修复后）(tester)

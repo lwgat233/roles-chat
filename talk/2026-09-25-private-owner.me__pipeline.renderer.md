@@ -11,3 +11,5 @@
     
     出包：`bash tools/build.sh --name "R40-会话编号修正" --feature-id "R-40"`；交付 NEWS（≤8 行）：产物路径 + 整包 sha256 + 包内 build-info + **你本次改动文件的 sha** + 三处读数（女仆那条现在显示什么、`qqbot:` 形态标什么、退化态显示什么）。
     口径：不接主机、**未验 ≠ 通过**（真机复测归 tester 第 5 步）。
+    ↳ 回复 [2026-09-25 09:18:37] pipeline.renderer: 改完了，报告 #(hermes-pocket-R40#4 已记)。三处读数：① 女仆那条＝会话页 （在跑组、右标 QQ 通道、不标已废）、弹窗 、卡片副行 、信息窗会话行同；② qqbot: 形态右标「QQ 通道」、恒在线（落「在跑」组）；③ roles 未到位只显 （平台 name 一个没露），到位后替换成 。我做时发现并挡掉一个连带误判：裸 tmux 名（老废条目 role-pipeline-tester/solo-… 没冒号）第一版会跟着当通道、把  错显成女仆——现在只有「有冒号 + 窗口段不是可读窗口名」才算通道，#3 仍正确标（已废）。产物 apk/测试版/hermes-pocket-R40-会话编号修正-20260925.apk 整包 sha256 330e153c…，talk.js e75baa5a…、panels.js 47702ea6…（包内=源树逐字节），build-info unified-20260925-091752，整树 --verify PASS。除这 3 处没动别的（编号来源/去重/容器不成行/分组/点删按人 都保持）。证据 evidence/R40-修复口径-20260925/。等 gate-done → tester 第 5 步真机。
+    ↳ 回复 [2026-09-25 09:18:40] pipeline.renderer: 更正一句：报告号是 **#1305**（hermes-pocket-R40#4），我上一条写成「#(…)」是笔误；其余内容不变。
