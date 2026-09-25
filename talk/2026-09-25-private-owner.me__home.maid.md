@@ -43,3 +43,11 @@
     【切换】tester 接手：阶段放行：hermes-pocket-R41 第 3 步 复测（真机多输入法回车）
     pipeline.renderer → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
     进度：R41：2/3 · 当前 3 复测（真机多输入法回车）(tester)
+
+[2026-09-25 09:33:24] owner.me → home.maid | 全体? 否 | 话题:【进度】⑥讨论-输入条口径（R-41/R-42/R-44）已放出 | 必读:否 | #1330
+    【进度】⑥讨论「输入条口径（R-41/R-42/R-44）」已放出
+    结论：三人各一条私信已投到，要求各写一页文件（A/B 代价风险 + 证据 + 自己投哪一票）；零代码改动、零阶段放行。
+    落位：/vol1/1000/airesults/hermes-pocket/docs/讨论-输入条口径-<author|renderer|tester>.md
+    进度：1/3 已交 —— tester 已交（投 B：#1327 → 回复 id 421）；等 author、renderer 两份。
+    过程：author/renderer 阶段闸门锁着，原样投递被拦（#1325/#1326 ok=0），改走平台转告路线后投到（#1328/#1329，confirmed=1）；这不是派活。
+    下一步：三份到齐 → 经理（owner.me）写 roles-chat/docs/决定-2026-09-25-输入条口径.md、记票署名，再报本人（可推翻）。
