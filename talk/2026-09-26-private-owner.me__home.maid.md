@@ -30,3 +30,8 @@
 [2026-09-26 12:36:53] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1417
     【完成】hermes-pocket-R39 第 3 步「复测」判定完成
     进度：R39：3/3 · 已收尾
+
+[2026-09-26 17:40:34] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1423
+    【切换】investigator 接手：阶段放行：uml-复习手册 第 1 步 轮1 骨架+对照表+共用例子+类图/用例图/时序图
+    pipeline.tester → research.investigator，接下来由 investigator 干；项目只列刚动的这条。
+    进度：uml-复习手册：0/4 · 当前 1 轮1 骨架+对照表+共用例子+类图/用例图/时序图(investigator)

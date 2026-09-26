@@ -26,3 +26,11 @@ verify: 待发正文先落到 /vol1/1000/aicache/tmp/*.txt，再由脚本读取�
 - 我连 `printf`/`echo` 直接拼正文也踩了：**反引号被 shell 当命令替换**（正文里 `"..."` 包起来的东西整段消失、报 command not found），发出去的话缺字。
 - 规矩升级：**正文一律先用 write_file 落成 .txt，再由 python 读文件调用 talk.py**（python 的 subprocess 用列表参数、不过 shell）—— 只有"一行短路径/短命令"才允许直接写在 shell 里。
 - 每次发完仍然**读回 `delivery` 的 `ok=1`**；正文里带 `#`/反引号/中文引号时更要走文件。
+
+## 工具坑：gh（GitHub CLI）也要走代理
+本机直连 `api.github.com` 会 `Post "https://api.github.com/graphql": EOF`（`gh repo create` 失败）。
+正确姿势：
+```bash
+HTTPS_PROXY=http://127.0.0.1:7890 HTTP_PROXY=http://127.0.0.1:7890 gh repo create <名> --public --source=. --remote=origin --push
+```
+（`git push` 本身可用，因为 git 侧已配；**只有 gh 需要显式给代理环境变量**。）
