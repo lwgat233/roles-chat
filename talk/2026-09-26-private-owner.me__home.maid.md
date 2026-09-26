@@ -26,3 +26,7 @@
     【切换】tester 接手：阶段放行：hermes-pocket-R39 第 3 步 复测
     research.investigator → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
     进度：R39：2/3 · 当前 3 复测(tester)
+
+[2026-09-26 12:36:53] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1417
+    【完成】hermes-pocket-R39 第 3 步「复测」判定完成
+    进度：R39：3/3 · 已收尾
