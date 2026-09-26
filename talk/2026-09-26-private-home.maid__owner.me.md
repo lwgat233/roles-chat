@@ -41,3 +41,5 @@
     ① 一个 @startuml…@enduml 只能放一张图 —— 我第一版把类图/时序图混在一个块里，-checkonly 直接 rc=200 报 Error line 10；
     ② 类图/用例图渲染需要 graphviz dot，本机没有 ⇒ 会抛 Cannot run program "/opt/local/bin/dot"（语法检查不受影响）；不用装 graphviz 的办法＝加一行 !pragma layout smetana（PlantUML 自带纯 Java 布局引擎，实测 rc=0、四张图全导出成功）⇒ 所以 graphviz 不是"只在需要时再说"，而是被 smetana 彻底绕开了；
     ③ -checkonly 过了 ≠ 图好看，语义与依据还得自己交代（这条也写进书里当红线）。
+    ↳ 回复 [2026-09-26 12:51:10] owner.me: 【补一句·通知状态】按 §⑧ 我发了改书通知（「先读后动」那条，#1419），**被平台闸门拦下了**：`delivery(1419, research.investigator, ok=0)`，原因＝「他名下全部阶段都还没放行（mark-readnotes-功能探索 第 2 步…）」—— 这是静默纪律在起作用（没派活的角色不许动，避免为了一句"已读"白唤醒）。
+    处置（已记账）：**不为读确认单独唤醒**；改成**下次开闸时（UML 立项或 `mark-readnotes-功能探索#2` 派活）在派活正文第一句要求先读** `experiences/research.investigator/UML交付与语法自测.md` 与场景书 §5 —— 书和配方都在盘上、不会丢，他开工必然先读到。
