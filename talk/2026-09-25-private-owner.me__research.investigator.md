@@ -43,3 +43,11 @@
     - 标题 `【社媒整理平台-1 调研与功能清单】research.investigator · HH:MM`；正文 ≤8 行：**已得结论**（每条一句 + 文档路径）、**还没查的**、**下一步建议**；成本行 `本次任务：调用 N 次 · 输入 X · 输出 Y · 缓存读 Z · ≈¥W`；给**文档路径清单**（逐份点名）。
     
     **交完之后停手**：`mark-readnotes-功能探索#2`（现有功能盘点表 + 可加功能候选，含 P25 五类块 + 四条口径 + KardLeaf 对照）**等经理放行**再做；本机仍**只出文档、不改代码**；要看 KardLeaf 源码走 `127.0.0.1:7890` 代理、只读。
+    ↳ 回复 [2026-09-25 17:02:00] research.investigator: 【社媒整理平台-1 调研与功能清单】research.investigator · 17:02
+    三样一次交：① `/vol1/1000/airesults/mark-readnotes/docs/功能介绍.md`（讲给人听版：一句话定位 + 按板块每条一句，按当前源码 registry.js 31 项 done 写；末段 1 行备注记「README 写 r8 而 apk/ 已有 r10」等 3 处文档与代码不一致）② `/vol1/1000/airesults/social-archive/docs/功能介绍.md`（同风格，含「第一版先做哪几件」，未验项标「待验」）③ 本条报告。
+    已得结论：匿名可读=合集/系列+分组内容+投稿+稿件元数据+播放器信息（`evidence/bilibili-api-20260924/探针运行日志.md`）；动态流与空间信息匿名 −352 需登录态、同一接口 4 分钟内 412↔200、老接口 −799 → 同步必须限速+退避；充电专属只认 `is_upower_exclusive`（`evidence/bilibili-api-20260924/P6_ytdlp_exclusive_attempt.txt`）；本机无可用 GPU，whisper base 12–13.6× 实时/0.5–0.7GB/自带时间轴，SenseVoice 5.4–6.2×/1.4GB/无时间轴（`evidence/stt-bench-20260924/README.md`）；音轨 2.28MB/103s（`evidence/download-bench-20260924/download-timing.txt`）。
+    还没查的（未验 ≠ 通过）：动态流登录后可达性、官方字幕覆盖率与登录要求、「仅粉丝可见/已删/地区限」返回码、飞牛 .fpk 安装全流程、功耗（估算）。
+    下一步建议：第 2 步出计划文档（功能↔板块↔判据一一对应）；部署本期先做 A 档（SSH + systemd --user）；待本人定 ① 动态流候选A（浏览器导出登录态）/B（放弃动态）② 转文本主用 base 还是 SenseVoice ③ 要不要建 GitHub 公开仓库。
+    文档路径清单：`social-archive/docs/` —— 01-功能清单-v0.1.md · 02-部署三方案对比-v0.1.md · 03-环境配方-小模型实测-v0.1.md · 04-收尾报告-已得结论-v0.1.md · 功能清单-草稿.md · 功能介绍.md；`social-archive/evidence/` 四组（bilibili-api-20260924 / host-bench-20260924 / stt-bench-20260924 / download-bench-20260924）；`social-archive/tools/` 10 个探针；`mark-readnotes/docs/功能介绍.md`（本轮新增，git f5357ad）。
+    本次任务：调用 14 次 · 输入 17632 · 输出 11074 · 缓存读 2360960 · ≈¥0.22（今日）。
+    硬停说明：团队预算已到上限（¥17.32/15，余 ¥0.00），本条之后停手、不派新阶段；`mark-readnotes-功能探索#2`（盘点表 + 可加候选 + P25 五类块四条口径 + KardLeaf 对照）等你放行再做。
