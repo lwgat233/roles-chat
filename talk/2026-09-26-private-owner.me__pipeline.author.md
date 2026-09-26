@@ -11,3 +11,12 @@
     4) **别碰的**：R-41 那条链（真机回车能发、组字态 1.5s 兜底复位）、R-31 防连点口径、R-36 状态机、R-39 的 padding 与 `--sayline-h`、R-42 右缘热区。
     5) **回归面与复测建议**：改 `assets/ui/talk.js` ⇒ **要重出包**（归 renderer）；复测板块＝主块 **①聊天页-单聊** ＋ **②聊天页-群聊**（同一公共入口）＋ 跨块 **⑧频道页**（授权框也走它），理由写清；判据建议＝**Shift+Enter 发出 0 条**、**普通回车仍 1 条**、**组字态回车仍能发**（R41 不许回归）、**同一次回车不出两条**。
     边界：不接主机、**未验 ≠ 通过**；证据进 `evidence/R45-定位-20260926/`；标题【hermes-pocket-R45-1 …】+ 4 行 + 成本¥；**交活走 `report` 通道**（`--project hermes-pocket-R45 --seq 1`）。
+    ↳ 回复 [2026-09-26 17:50:23] pipeline.author: R-45 第 1 步已交报告 #1442（8 行，走 report 通道）。
+    **谁闯的祸**：**`talk.js:221`** `inp.addEventListener("keyup", (e) => { shiftDown = !!(e && e.shiftKey); if (isEnter(e)) go(e); });` —— keyup 兜底把 shift 状态**从正在死掉的键事件里重读**：`keyup Shift(shiftKey=true ⇒ shiftDown=true)` → `keyup Enter(**shiftKey=false** ⇒ 覆盖回 false)` → `go()` 里 `shifted()`（talk.js:203）读到 false ⇒ 发送。keydown 主路（talk.js:214-220）**是有守卫的、正确拦住了**，keyup 是"第二次机会"。
+    **为什么必然踩到**：真机最常见的松键顺序就是"**Shift 先松、Enter 后松**"（先抬小指再抬中指），那一刻系统按"还没松的键"算修饰键 ⇒ `keyup Enter` 必为 `shiftKey=false`；反过来（Enter 先松）能躲过，但不受用户控制。
+    复现（CDP 真键盘、按你给的序列）：**单聊 Shift+Enter → talk.say 1 次**、**群聊 → talk.shout 1 次**；普通回车仍 1 次（功能没坏）。发完输入框被重画 ⇒ 不粘滞。
+    **同类风险**：`beforeinput` 兜底（talk.js:222-225）也走同一个被污染的 `shiftDown`，而 `InputEvent` **没有 `shiftKey` 属性**（R-41 定位时抓到过它误发）⇒ 必须一起治。**三处调用点**：talk.js:565 群聊 gin（实测中招）· talk.js:1152 单聊 inp（实测中招）· talk.js:681 授权回复框（同函数同构，标同构推断）⇒ 修公共入口一处三处一起好。
+    **改法＝A/B 合并（我推荐，约 4 行、只动 bindEnterSend）**：talk.js:197 的 `shiftDown` → `shiftAt`（时间戳闩）；talk.js:203 `shifted()` 改读 `(shiftAt && now()-shiftAt < 400)`；keydown(214) 开头加 `if (e.key === "Shift" || e.shiftKey === true) shiftAt = now();`（**必须含 `e.key === "Shift"`** —— 真机上它的 keydown 可能 shiftKey=false）；**keyup(221) 只记 true、绝不用 keyup 清 0**；beforeinput 不改（走同一 shifted）。
+    **七用例实测（现状 → A/B → 去掉 keyup）**：Shift+Enter **1→0**；普通回车 1→1→1；**输入法提交+只补 keyup13 1→1→0（⇒ 候选 C 把 R-41 救回来的输入法场景砍掉，不要做 C）**；beforeinput 1→1→1；一次按键三条路 1→1→1（防重复在）；连按两次 2→2→2；Shift+Enter 后紧接着回车 2→**1**（不粘滞）。
+    **判据**：Shift+Enter ⇒ 0 条 · 普通回车 ⇒ 1 条 · 输入法提交+keyup13 ⇒ 1 条（R-41 不回归）· beforeinput ⇒ 1 条 · 三条路同触发 ⇒ 1 条 · 连按两次 ⇒ 2 条 · Shift+Enter 后回车 ⇒ 1 条。**不碰**：R-41 链（含组字 1.5s 兜底 talk.js:227-238）· R-31 防连点 · R-36 状态机 · R-39 padding/`--sayline-h` · R-42 右缘热区。
+    回归面：改 talk.js（约 4 行）⇒ 必须重出包（归 renderer）；复测主块 ①单聊 + ②群聊（同一公共入口，实测两处都中招）+ 跨块 ⑧频道页（授权框 talk.js:681 也走它）；建议真机用**实体键盘**打 Shift+Enter（0 条）/ 普通回车（1 条）/ 软键盘回车（1 条）。边界：不接主机、未验≠通过；证据 evidence/R45-定位-20260926/（sha256 8a3f280718de…），登记表 R-45 已改，提交 ea77539。
