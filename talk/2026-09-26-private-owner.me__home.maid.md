@@ -90,3 +90,12 @@
     【切换】renderer 接手：阶段放行：hermes-pocket-R45 第 2 步 界面改动与出包
     pipeline.author → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
     进度：R45：1/3 · 当前 2 界面改动与出包(renderer)
+
+[2026-09-26 17:52:11] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1448
+    【完成】hermes-pocket-R45 第 2 步「界面改动与出包」判定完成
+    进度：R45：2/3 · 等 3 复测（实体键盘 Shift+Enter）(tester)
+
+[2026-09-26 17:52:11] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1450
+    【切换】tester 接手：阶段放行：hermes-pocket-R45 第 3 步 复测（实体键盘 Shift+Enter）
+    pipeline.renderer → pipeline.tester，接下来由 tester 干；项目只列刚动的这条。
+    进度：R45：2/3 · 当前 3 复测（实体键盘 Shift+Enter）(tester)

@@ -15,3 +15,7 @@
     
     **出包**：`bash tools/build.sh --name "R45-Shift回车不误发" --feature-id "R-45"`；交付 NEWS（≤8 行）：产物路径 + 整包 sha256 + 包内 `build-info` + **本次改动文件 sha** + 七用例读数；**别忘整树 `--verify`**。
     **交活**：走 `report` 通道（`--project hermes-pocket-R45 --seq 2`）；报告标题【hermes-pocket-R45-2 …】；边界：不接主机、**未验 ≠ 通过**（真机实体键盘复验归 tester 第 3 步）。
+    ↳ 回复 [2026-09-26 17:52:03] pipeline.renderer: 做完了，报告 **#1447**（hermes-pocket-R45#2）。改法照你的清单，只动 talk.js 的 bindEnterSend：① shiftDown 布尔 → 时间戳闩 `shiftAt=0`；② `shifted()` → `(shiftAt && now()-shiftAt < 400)`；③ keydown 开头 `if (e.key === 'Shift' || e.shiftKey === true) shiftAt = now();`（含 `e.key === 'Shift'`）；④ 祸根那行 keyup 改成 `if (e && e.shiftKey) shiftAt = now(); if (isEnter(e)) go(e);`（只记 true、绝不清零）；⑤ beforeinput 没动。没做候选 C，没碰 R-41 链/组字 1.5s/R-31/R-36/R-39/R-42/Bridge.kt。
+    七用例读数：① 普通回车 **1 条**；② 祸根形状（Shift kd → Enter kd(shiftKey=true) → Shift ku(false) → Enter ku(false) + beforeinput）**0 条**、文字仍在；③ Shift+Enter 完整形状 **0 条**、文字仍在；④ 只给 beforeinput **1 条**；⑤ 输入法提交形状（只给 keyup13）**1 条**（R-41 不回归）；⑥ 同一次按键三条路同触发 **1 条**；⑦ 连按两次(间隔 600ms) **2 条**；⑧ Shift+Enter 后紧接着回车 Shift 那下 0 条、随后累计 **1 条**（不粘滞，间隔 600ms > 400ms 闩）；报错 0 条。
+    产物 apk/测试版/hermes-pocket-R45-Shift回车不误发-20260926.apk（5091338 字节）整包 sha256 c9615844…；本次改动文件 ui/talk.js 7cbe502b…（包内=源树逐字节）；包内 build-info unified-20260926-175117；**整树 stamp-build --verify → PASS 包内 ↔ 源树**。证据 evidence/R45-实现与出包-20260926/（结论与读数 + t-r45-shift 原始读数）。
+    一句如实说明：用例⑧ 我按 600ms 间隔读的（闩 400ms 过期，这个间隔才等于"不粘滞"）；400ms 内的普通回车会被闩挡——这是口径②给的语义，若你要"Shift 抬起就立刻解锁"再说一声。
