@@ -35,3 +35,9 @@
     4) **今天不开工**：先登记 + 改书，等他给四张图的准头再谈活。
     
     回复要求：**一句话**（登记成什么 / 书改了没 / 校验手段定了没）。
+    ↳ 回复 [2026-09-26 12:50:37] owner.me: 【一句话】登记＝给 research.investigator 的「UML 建模」长期职责（四张图待你给准头，先按用例图/类图/时序图/活动图备着）；书改了 —— roles/research/SKILL.md 新增 §5「UML 建模」＋角色卡补一节＋必读经验 experiences/research.investigator/UML交付与语法自测.md＋环境配方 roles-chat/env/UML建模-环境配方.md，记账 3 行进 docs/角色书改动记录.md，并已通知 investigator 先读后动、今天不开工；校验手段定了而且当场验过 —— plantuml.jar 已一次性下到 /vol1/1000/aicache/tools/plantuml.jar（1.2024.8；java17 在 /home/lwgat/tools/jdk-17.0.2/bin/java），实测四张图样例：-checkonly rc=0（0 error 合格）、-tsvg 导出 4 个 svg。
+    
+    三条实测坑已写进书里（跟你的建议有两处修正）：
+    ① 一个 @startuml…@enduml 只能放一张图 —— 我第一版把类图/时序图混在一个块里，-checkonly 直接 rc=200 报 Error line 10；
+    ② 类图/用例图渲染需要 graphviz dot，本机没有 ⇒ 会抛 Cannot run program "/opt/local/bin/dot"（语法检查不受影响）；不用装 graphviz 的办法＝加一行 !pragma layout smetana（PlantUML 自带纯 Java 布局引擎，实测 rc=0、四张图全导出成功）⇒ 所以 graphviz 不是"只在需要时再说"，而是被 smetana 彻底绕开了；
+    ③ -checkonly 过了 ≠ 图好看，语义与依据还得自己交代（这条也写进书里当红线）。
