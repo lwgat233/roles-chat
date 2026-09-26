@@ -35,3 +35,12 @@
     【切换】investigator 接手：阶段放行：uml-复习手册 第 1 步 轮1 骨架+对照表+共用例子+类图/用例图/时序图
     pipeline.tester → research.investigator，接下来由 investigator 干；项目只列刚动的这条。
     进度：uml-复习手册：0/4 · 当前 1 轮1 骨架+对照表+共用例子+类图/用例图/时序图(investigator)
+
+[2026-09-26 17:42:41] owner.me → home.maid | 全体? 否 | 话题:【告知】进度 | 必读:否 | #1426
+    【完成】uml-复习手册 第 1 步「轮1 骨架+对照表+共用例子+类图/用例图/时序图」判定完成
+    进度：uml-复习手册：1/4 · 等 2 轮2 对象图/包图/组件图/部署图(investigator)
+
+[2026-09-26 17:42:41] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1428
+    【切换】investigator 接手：阶段放行：mark-readnotes-功能探索 第 2 步 现有功能盘点表 + 可加功能候选（含 P25 五类块/四条口径/KardLeaf 对照）
+    research.investigator → research.investigator，接下来由 investigator 干；项目只列刚动的这条。
+    进度：mark-readnotes-功能探索：1/2 · 当前 2 现有功能盘点表 + 可加功能候选（含 P25 五类块/四条口径/KardLeaf 对照）(investigator)
