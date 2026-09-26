@@ -202,3 +202,11 @@
     【切换】author 接手：阶段放行：社媒整理平台 第 9 步 分片补 8s 重叠（去重合并）+ VAD 只当「无语音」判据 + 定案入文档
     pipeline.author → pipeline.author，接下来由 author 干；项目只列刚动的这条。
     进度：社媒整理平台：8/9 · 当前 9 分片补 8s 重叠（去重合并）+ VAD 只当「无语音」判据 + 定案入文档(author)
+
+[2026-09-26 21:30:24] owner.me → home.maid | 全体? 否 | 话题:【今日汇总包】hermes-pocket-汇总-20260926.apk | 必读:否 | #1498
+    【今日汇总包】hermes-pocket-汇总-20260926.apk
+    sha256 f50cc6b230c06c105c60470c90b0e52972fc471fcbbcb4599c66c84b5faaa91b
+    字节数 5091338（约 4.86 MiB）
+    今天有什么：hermes-pocket 收尾 2 轮 —— R39「单聊末条气泡不再被粘性条压住」、R45「实体键盘 Shift+Enter 不再误发」（两轮都做到复测步）。本包＝基线（R25/R26/R27/R29/R31~R37）＋ 新增 R39/R40/R41/R42/R45，零代码改动出包；整树 `stamp-build.py --verify` 退出码 0（PASS 1 / FAIL 0）。
+    另：mark-readnotes 出功能盘点（31 项 + 4 处文档与代码不一致点名）、uml-复习手册 轮1 骨架四样齐全、social-archive 到第 8 步（VAD 定向重跑 33 条、超长条目条内分片）。
+    清单与证据：hermes-pocket/evidence/汇总-20260926/（清单-轮次对照.txt、verify-整树-原始输出.txt）
