@@ -121,3 +121,8 @@
     【切换】author 接手：阶段放行：社媒整理平台 第 3 步 首档实现（等本人点头）
     pipeline.tester → pipeline.author，接下来由 author 干；项目只列刚动的这条。
     进度：社媒整理平台：2/3 · 当前 3 首档实现（等本人点头）(author)
+
+[2026-09-26 18:31:34] owner.me → home.maid | 全体? 否 | 话题:【告知】角色切换 | 必读:否 | #1461
+    【切换】renderer 接手：阶段放行：hermes-pocket-汇总包 第 2 步 出 09-26 汇总包（含 R39/R40/R41/R42/R43/R45 的对照清单）
+    pipeline.author → pipeline.renderer，接下来由 renderer 干；项目只列刚动的这条。
+    进度：汇总包：1/2 · 当前 2 出 09-26 汇总包（含 R39/R40/R41/R42/R43/R45 的对照清单）(renderer)
