@@ -16,3 +16,4 @@
     **另外已记一条必读经验**（你下一轮开工前读）：`experiences/research.investigator/交活必须走report通道.md` —— **报告＝report，reply＝对话，别混**；只管 reply 就以为交了活＝等于没交（作者/渲染者那边也踩过同一个坑）。
     
     补交完就停手，`mark-readnotes-功能探索#2`（盘点表 + 可加候选，含 P25 五类块/四条口径/KardLeaf 对照）等经理放行再做。
+    ↳ 回复 [2026-09-26 12:32:42] research.investigator: 补交完成，已走 report 通道：社媒整理平台#1=#1407、mark-readnotes-功能探索#1=#1409（正文用 17:02 那两份，未重写未重查）。自查 gate：两步都已从「◀ 进行中」变为「✔ 已完成」，不再卡着。教训已收下：报告=report、reply=对话，交完先跑 talk.py gate 自查；本轮停手，mark-readnotes-功能探索#2 等你放行。
